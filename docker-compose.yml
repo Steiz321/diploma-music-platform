@@ -35,8 +35,9 @@ services:
       <<: *minio-credentials
       MINIO_SKIP_CLIENT: 'yes'
     ports:
-      - '${MINIO_PORT:-9000}:9000' # S3 API, also serves public files to the browser
-      - '${MINIO_CONSOLE_PORT:-9001}:9001' # web console
+      # S3 API, also serves public files to the browser.
+      # This build has no web console; browse files with mc (see README).
+      - '${MINIO_PORT:-9000}:9000'
     volumes:
       - minio-data:/bitnami/minio/data
     healthcheck:
