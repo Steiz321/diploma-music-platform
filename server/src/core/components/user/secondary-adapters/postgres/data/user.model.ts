@@ -23,15 +23,16 @@ export default class UserModel extends Model<UserModel> {
   @Column
   id: number;
 
+  @AllowNull(false)
   @Column
   username: string;
 
   @AllowNull
-  @Column
+  @Column(DataType.TEXT)
   description: string;
 
   @AllowNull
-  @Column
+  @Column(DataType.TEXT)
   avatar: string;
 
   @Default(UserType.user)

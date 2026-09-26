@@ -24,18 +24,20 @@ export default class PlaylistModel extends Model<PlaylistModel> {
   @Column
   id: number;
 
+  @AllowNull(false)
   @Column
   title: string;
 
   @AllowNull
-  @Column
+  @Column(DataType.TEXT)
   description: string;
 
   @AllowNull
-  @Column
+  @Column(DataType.TEXT)
   cover_url: string;
 
   @ForeignKey(() => UserModel)
+  @AllowNull(false)
   @Column
   user_id: number;
 

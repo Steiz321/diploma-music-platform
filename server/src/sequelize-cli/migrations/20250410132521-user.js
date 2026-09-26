@@ -31,8 +31,10 @@ module.exports = {
             allowNull: true,
           },
           type: {
-            type: Sequelize.STRING,
+            // postgres enum created above
+            type: 'user_type',
             allowNull: false,
+            defaultValue: 'user',
           },
           is_verified: {
             type: Sequelize.BOOLEAN,

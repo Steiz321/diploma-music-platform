@@ -21,10 +21,12 @@ export default class ListensModel extends Model<ListensModel> {
   id: number;
 
   @ForeignKey(() => UserModel)
+  @AllowNull(false)
   @Column
   user_id: number;
 
   @ForeignKey(() => SongModel)
+  @AllowNull(false)
   @Column
   song_id: number;
 

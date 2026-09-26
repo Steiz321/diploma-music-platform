@@ -23,26 +23,28 @@ export default class SongModel extends Model<SongModel> {
   @Column
   id: number;
 
+  @AllowNull(false)
   @Column
   name: string;
 
-  @Column
+  @Column(DataType.TEXT)
   description: string;
 
-  @Column
   @AllowNull
-  @Column
+  @Column(DataType.TEXT)
   cover_url: string;
 
   @ForeignKey(() => UserModel)
+  @AllowNull(false)
   @Column
   user_id: number;
 
   @AllowNull
-  @Column
+  @Column(DataType.TEXT)
   text: string;
 
-  @Column
+  @AllowNull(false)
+  @Column(DataType.TEXT)
   audio: string;
 
   @Default(0)

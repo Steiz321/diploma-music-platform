@@ -17,22 +17,25 @@ export default class UserAuthModel extends Model<UserAuthModel> {
   @Column
   id: number;
 
+  @AllowNull(false)
   @Column
   user_id: number;
 
   @Unique
+  @AllowNull(false)
   @Column
   email: string;
 
-  @Column
+  @AllowNull(false)
+  @Column(DataType.TEXT)
   password: string;
 
   @AllowNull
-  @Column
+  @Column(DataType.TEXT)
   token: string;
 
   @AllowNull
-  @Column
+  @Column(DataType.TEXT)
   refresh_token: string;
 
   @Default(DataType.NOW)

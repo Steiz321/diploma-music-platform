@@ -21,10 +21,12 @@ export default class LikeToSongModel extends Model<LikeToSongModel> {
   id: number;
 
   @ForeignKey(() => UserModel)
+  @AllowNull(false)
   @Column
   user_id: number;
 
   @ForeignKey(() => SongModel)
+  @AllowNull(false)
   @Column
   song_id: number;
 

@@ -22,7 +22,7 @@ module.exports = {
             type: Sequelize.TEXT,
             allowNull: true,
           },
-          owner_id: {
+          user_id: {
             type: Sequelize.INTEGER,
             allowNull: false,
             references: {

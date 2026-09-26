@@ -16,6 +16,7 @@
     "migration:create": "cd src/sequelize-cli && npx sequelize-cli migration:generate --name ",
     "migration:run": "cd src/sequelize-cli && npx sequelize-cli db:migrate",
     "migration:undo": "cd src/sequelize-cli && npx sequelize-cli db:migrate:undo",
+    "schema:check": "ts-node -r tsconfig-paths/register scripts/check-schema.ts",
     "seed:create": "cd src/sequelize-cli && npx sequelize-cli seed:generate --name ",
     "seed:run": "cd src/sequelize-cli && npx sequelize-cli db:seed:all",
     "seed:undo": "cd src/sequelize-cli && npx sequelize-cli db:seed:undo"

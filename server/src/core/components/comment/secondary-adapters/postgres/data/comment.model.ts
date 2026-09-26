@@ -21,14 +21,17 @@ export default class CommentModel extends Model<CommentModel> {
   id: number;
 
   @ForeignKey(() => SongModel)
+  @AllowNull(false)
   @Column
   song_id: number;
 
   @ForeignKey(() => UserModel)
+  @AllowNull(false)
   @Column
   user_id: number;
 
-  @Column
+  @AllowNull(false)
+  @Column(DataType.TEXT)
   text: string;
 
   @Default(DataType.NOW)

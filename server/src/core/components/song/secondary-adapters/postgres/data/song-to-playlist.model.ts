@@ -23,10 +23,12 @@ export default class SongToPlaylistModel extends Model<SongToPlaylistModel> {
   id: number;
 
   @ForeignKey(() => SongModel)
+  @AllowNull(false)
   @Column
   song_id: number;
 
   @ForeignKey(() => PlaylistModel)
+  @AllowNull(false)
   @Column
   playlist_id: number;
 
