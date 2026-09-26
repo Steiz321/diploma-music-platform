@@ -1,0 +1,81 @@
+# ─── Dependencies ────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.yarn/
+
+# ─── Build output ────────────────────────────────────────────
+dist/
+build/
+*.tsbuildinfo
+.vite/
+
+# ─── Environment & secrets ───────────────────────────────────
+# Real env files hold secrets (DB, JWT, S3, GROQ_API_KEY). Only examples are committed.
+.env
+.env.*
+!.env.example
+*.local
+# legacy env folder of the server (contains old AWS / AssemblyAI keys)
+server/env/
+
+# ─── Docker / local data ─────────────────────────────────────
+# bind-mounted volume data, if any service is switched from named volumes
+.docker-data/
+data/postgres/
+data/minio/
+docker-compose.override.yml
+
+# ─── Temporary / generated media ─────────────────────────────
+# ffmpeg conversions and test uploads
+tmp/
+.tmp/
+.temp/
+*.tmp
+
+# ─── Logs & diagnostics ──────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+pids/
+*.pid
+*.pid.lock
+
+# ─── Tests & coverage ────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ─── Python (future AI / analytics services) ─────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ─── OS ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ─── IDEs & editors ──────────────────────────────────────────
+.idea/
+*.iml
+*.sublime-workspace
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ─── Local tooling ───────────────────────────────────────────
+.claude/settings.local.json
