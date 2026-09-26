@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { UseCase } from 'src/core/shared-kernel/interfaces/use-case';
 import {
   PlaylistRepository,
@@ -34,7 +34,7 @@ export default class GetPlaylistByIdUseCase
     });
 
     if (!playlist || (playlist.is_private && playlist.user_id !== userId)) {
-      throw new Error('Playlist not found');
+      throw new NotFoundException('Playlist not found');
     }
 
     const isLiked = await this.queryBus.execute(

@@ -1,4 +1,10 @@
-import { Injectable, Inject } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { UseCase } from 'src/core/shared-kernel/interfaces/use-case';
 import {
   PlaylistRepository,
@@ -41,7 +47,7 @@ export default class AddSongToPlaylistUseCase
     const song = await this.songRepository.getOneWhere({ id: songId });
 
     if (!song) {
-      throw new Error('Song not found');
+      throw new NotFoundException('Song not found');
     }
 
     const playlist = await this.playlistRepository.getOneWhere({
@@ -49,11 +55,13 @@ export default class AddSongToPlaylistUseCase
     });
 
     if (!playlist) {
-      throw new Error('Playlist not found');
+      throw new NotFoundException('Playlist not found');
     }
 
     if (playlist.user_id !== userId) {
-      throw new Error('Playlist not found');
+      throw new ForbiddenException(
+        'You are not allowed to add songs to this playlist',
+      );
     }
 
     const songToPlaylist = await this.songToPlaylistRepository.getOneWhere({
@@ -62,7 +70,7 @@ export default class AddSongToPlaylistUseCase
     });
 
     if (songToPlaylist) {
-      throw new Error('Song already in playlist');
+      throw new ConflictException('Song already in playlist');
     }
 
     await this.songToPlaylistRepository.create({

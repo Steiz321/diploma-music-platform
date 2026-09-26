@@ -27,12 +27,14 @@ export class UserController {
 
   @Get('/liked-songs')
   async getUsersLikedSongs(@UserAuth() userAuth: UserAuthRequestObject) {
-    return this.getUsersLikedSongsUseCase.execute({ userId: userAuth.id });
+    return this.getUsersLikedSongsUseCase.execute({ userId: userAuth.user_id });
   }
 
   @Get('/liked-playlists')
   async getUsersLikedPlaylists(@UserAuth() userAuth: UserAuthRequestObject) {
-    return this.getUsersLikedPlaylistsUseCase.execute({ userId: userAuth.id });
+    return this.getUsersLikedPlaylistsUseCase.execute({
+      userId: userAuth.user_id,
+    });
   }
 
   @Get('/:id')

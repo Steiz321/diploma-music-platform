@@ -19,6 +19,8 @@ export class UserRepositoryAdapter implements UserRepository {
         {
           association: 'liked_songs',
           where: { deleted_at: null },
+          // a where on include makes it an INNER JOIN; keep users with no rows
+          required: false,
           through: { attributes: [] },
           include: [
             {
@@ -40,6 +42,8 @@ export class UserRepositoryAdapter implements UserRepository {
         {
           association: 'liked_playlists',
           where: { deleted_at: null },
+          // a where on include makes it an INNER JOIN; keep users with no rows
+          required: false,
           through: { attributes: [] },
           include: [
             {
@@ -61,6 +65,8 @@ export class UserRepositoryAdapter implements UserRepository {
         {
           association: 'songs',
           where: { deleted_at: null },
+          // a where on include makes it an INNER JOIN; keep users with no rows
+          required: false,
           include: [
             {
               association: 'user',
@@ -81,6 +87,8 @@ export class UserRepositoryAdapter implements UserRepository {
         {
           association: 'playlists',
           where: { deleted_at: null },
+          // a where on include makes it an INNER JOIN; keep users with no rows
+          required: false,
           include: [
             {
               association: 'user',

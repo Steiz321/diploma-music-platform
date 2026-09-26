@@ -34,7 +34,7 @@ export default class GetUsersLikedSongsUseCase
     const resultSongsArray = await Promise.all(
       user.liked_songs.map(async (song) => {
         const isSongLiked = await this.queryBus.execute(
-          new CheckSongLikeQuery(song.user_id, song.id),
+          new CheckSongLikeQuery(userId, song.id),
         );
         return {
           ...song,

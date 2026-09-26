@@ -24,7 +24,7 @@ export class PlaylistLikeController {
   ) {
     return this.createPlaylistLikeUseCase.execute({
       playlistId: body.playlistId,
-      userId: userAuth.id,
+      userId: userAuth.user_id,
     });
   }
 }

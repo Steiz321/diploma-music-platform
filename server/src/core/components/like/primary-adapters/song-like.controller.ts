@@ -22,7 +22,7 @@ export class SongLikeController {
   ) {
     return this.createSongLikeUseCase.execute({
       songId: body.songId,
-      userId: userAuth.id,
+      userId: userAuth.user_id,
     });
   }
 }

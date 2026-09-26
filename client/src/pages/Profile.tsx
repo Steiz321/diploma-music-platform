@@ -83,12 +83,8 @@ const Profile: React.FC = () => {
         setUser(userData);
         setPlaylists(userPlaylists);
       } catch (err) {
+        // an expired session is handled by the apiClient interceptor (-> /login)
         console.error("Error fetching user data:", err);
-        if (location.pathname === "/my-profile") {
-          // If there's an error fetching the user's own profile, redirect to login
-          navigate("/login");
-          return;
-        }
         setError("Failed to load user profile");
       } finally {
         setLoading(false);
