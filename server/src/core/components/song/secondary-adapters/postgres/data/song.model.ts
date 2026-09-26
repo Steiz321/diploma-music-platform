@@ -15,6 +15,8 @@ import CommentModel from '../../../../comment/secondary-adapters/postgres/data/c
 import ListensModel from './listens.model';
 import LikeToSongModel from '../../../../like/secondary-adapters/postgres/data/like-to-song.model';
 import UserModel from 'src/core/components/user/secondary-adapters/postgres/data/user.model';
+import { TranscriptionStatus } from 'src/core/shared-kernel/data/enum/transcription-status.enum';
+import { TranscriptionResult } from 'src/core/shared-kernel/ports/transcription-service.interface';
 
 @Table({ tableName: 'song' })
 export default class SongModel extends Model<SongModel> {
@@ -50,6 +52,19 @@ export default class SongModel extends Model<SongModel> {
   @Default(0)
   @Column
   listens: number;
+
+  @AllowNull
+  @Column(DataType.JSONB)
+  transcription: TranscriptionResult | null;
+
+  @AllowNull(false)
+  @Default(TranscriptionStatus.pending)
+  @Column(DataType.ENUM(...Object.values(TranscriptionStatus)))
+  transcription_status: TranscriptionStatus;
+
+  @AllowNull
+  @Column
+  language: string | null;
 
   @Default(DataType.NOW)
   @Column

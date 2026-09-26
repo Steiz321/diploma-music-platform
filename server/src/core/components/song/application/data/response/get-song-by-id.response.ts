@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { TranscriptionStatus } from 'src/core/shared-kernel/data/enum/transcription-status.enum';
 
 class User {
   @ApiProperty({ example: 1 })
@@ -38,6 +39,15 @@ export class GetSongByIdResponse {
 
   @ApiProperty({ example: 1 })
   listens: number;
+
+  @ApiProperty({
+    enum: TranscriptionStatus,
+    example: TranscriptionStatus.done,
+  })
+  transcription_status: TranscriptionStatus;
+
+  @ApiProperty({ example: 'en', nullable: true })
+  language: string | null;
 
   @ApiProperty({ example: new Date() })
   created_at: Date;

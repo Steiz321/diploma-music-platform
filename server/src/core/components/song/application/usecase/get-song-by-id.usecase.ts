@@ -47,6 +47,8 @@ export default class GetSongByIdUseCase
       text: song.text,
       is_liked: isSongLiked,
       listens: song.listens,
+      transcription_status: song.transcription_status,
+      language: song.language,
       created_at: song.created_at,
       deleted_at: song.deleted_at,
       user: {

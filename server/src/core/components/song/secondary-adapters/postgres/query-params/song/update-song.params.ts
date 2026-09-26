@@ -10,6 +10,9 @@ export type SongUpdateParams = Partial<
     | 'text'
     | 'audio'
     | 'listens'
+    | 'transcription'
+    | 'transcription_status'
+    | 'language'
     | 'deleted_at'
   >
 >;

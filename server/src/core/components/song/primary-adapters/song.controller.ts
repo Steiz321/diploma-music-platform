@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -57,11 +58,16 @@ export class SongController {
     @UploadedFiles()
     files: { audio?: Express.Multer.File[]; cover?: Express.Multer.File[] },
   ): Promise<CreateSongResponse> {
+    const audio = files?.audio?.[0];
+    if (!audio) {
+      throw new BadRequestException('Audio file is required');
+    }
+
     return this.createSongUseCase.execute({
-      audio: files.audio[0],
+      audio,
       params: dto,
       userId: userAuth.user_id,
-      cover: files.cover?.[0],
+      cover: files?.cover?.[0],
     });
   }
 
