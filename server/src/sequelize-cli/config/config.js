@@ -1,15 +1,23 @@
+const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
-const envPath = path.resolve(__dirname, '../../../env/.env');
-console.log('Loading env from:', envPath);
 
-const result = dotenv.config({ path: envPath });
-if (result.error) {
-  console.error('Error loading .env file:', result.error);
-  throw result.error;
+// server/.env is optional: in Docker the variables come from the environment,
+// and they take precedence over the file.
+const envPath = path.resolve(__dirname, '../../../.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
 }
 
-console.log('Environment variables loaded successfully');
+const dbSslOptions =
+  process.env.DB_SSL === 'true'
+    ? {
+        ssl: {
+          require: true,
+          rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+        },
+      }
+    : {};
 
 module.exports = {
   dialect: 'postgres',
@@ -22,13 +30,7 @@ module.exports = {
   define: {
     timestamps: false,
   },
-  // it fixes error: no pg_hba.conf entry for host
-  dialectOptions: {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false,
-    },
-  },
+  dialectOptions: dbSslOptions,
   seederStorage: 'sequelize',
   seederStorageTableName: 'seeder_actions',
 };

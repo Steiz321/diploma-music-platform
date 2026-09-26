@@ -12,10 +12,10 @@ export class S3Service implements S3ServiceInterface {
   constructor(private readonly configService: ConfigService) {
     this.s3 = new S3({
       credentials: {
-        accessKeyId: this.configService.get<string>('aws.accessKeyId'),
-        secretAccessKey: this.configService.get<string>('aws.secretAccessKey'),
+        accessKeyId: this.configService.get<string>('s3.accessKeyId'),
+        secretAccessKey: this.configService.get<string>('s3.secretAccessKey'),
       },
-      region: this.configService.get<string>('aws.defaultRegion'),
+      region: this.configService.get<string>('s3.region'),
     });
   }
 
@@ -26,7 +26,7 @@ export class S3Service implements S3ServiceInterface {
     isPublicRead: boolean,
   ): Promise<string> {
     const groupKey = this.createFileKey(key, group);
-    const bucketName = this.configService.get<string>('aws.filesBucketName');
+    const bucketName = this.configService.get<string>('s3.bucket');
 
     const command = new PutObjectCommand({
       Bucket: bucketName,
@@ -72,8 +72,8 @@ export class S3Service implements S3ServiceInterface {
   }
 
   private getFileUrl(fileKey: string): string {
-    const awsRegion = this.configService.get<string>('aws.defaultRegion');
-    const bucketName = this.configService.get<string>('aws.filesBucketName');
+    const awsRegion = this.configService.get<string>('s3.region');
+    const bucketName = this.configService.get<string>('s3.bucket');
 
     return `https://${bucketName}.s3.${awsRegion}.amazonaws.com/${fileKey}`;
   }
