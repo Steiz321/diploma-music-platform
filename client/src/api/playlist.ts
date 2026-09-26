@@ -1,6 +1,4 @@
-import axios from "axios";
-
-const BASE_URL = "http://localhost:3000";
+import { apiClient } from "./client";
 
 export interface Playlist {
   id: number;
@@ -31,10 +29,8 @@ export interface Playlist {
 
 const playlistApi = {
   createPlaylist: async (formData: FormData): Promise<Playlist> => {
-    const token = localStorage.getItem("token");
-    const response = await axios.post(`${BASE_URL}/playlist`, formData, {
+    const response = await apiClient.post("/playlist", formData, {
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "multipart/form-data",
       },
     });
@@ -42,43 +38,22 @@ const playlistApi = {
   },
 
   getPlaylistById: async (id: number): Promise<Playlist> => {
-    const token = localStorage.getItem("token");
-    const response = await axios.get(`${BASE_URL}/playlist/${id}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await apiClient.get(`/playlist/${id}`);
     console.log("playlist", response.data.data);
     return response.data.data;
   },
 
   getAllPlaylists: async (): Promise<Playlist[]> => {
-    const token = localStorage.getItem("token");
-    const response = await axios.get(`${BASE_URL}/playlist`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await apiClient.get("/playlist");
     return response.data.data.playlists;
   },
 
   likePlaylist: async (playlistId: number): Promise<void> => {
-    const token = localStorage.getItem("token");
-    await axios.post(
-      `${BASE_URL}/playlist-like`,
-      { playlistId },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    await apiClient.post("/playlist-like", { playlistId });
   },
 
   getLikedPlaylists: async (): Promise<Playlist[]> => {
-    const response = await axios.get(`${BASE_URL}/user/liked-playlists`, {
-      headers: getAuthHeader(),
-    });
+    const response = await apiClient.get("/user/liked-playlists");
     return response.data.data.liked_playlists;
   },
 
@@ -86,35 +61,20 @@ const playlistApi = {
     playlistId: number,
     songId: number
   ): Promise<void> => {
-    await axios.post(
-      `${BASE_URL}/playlist/${playlistId}/song`,
-      { songId },
-      {
-        headers: getAuthHeader(),
-      }
-    );
+    await apiClient.post(`/playlist/${playlistId}/song`, { songId });
   },
 
   getUserPlaylists: async (): Promise<Playlist[]> => {
     const userId = localStorage.getItem("user_id");
     if (!userId) throw new Error("User ID not found");
 
-    const response = await axios.get(`${BASE_URL}/playlist/user/${userId}`, {
-      headers: getAuthHeader(),
-    });
+    const response = await apiClient.get(`/playlist/user/${userId}`);
     return response.data.data.playlists;
   },
 
   deletePlaylist: async (playlistId: number): Promise<void> => {
-    await axios.delete(`${BASE_URL}/playlist/${playlistId}`, {
-      headers: getAuthHeader(),
-    });
+    await apiClient.delete(`/playlist/${playlistId}`);
   },
-};
-
-const getAuthHeader = () => {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
 export default playlistApi;

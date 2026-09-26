@@ -1,8 +1,6 @@
-import axios from "axios";
+import { apiClient } from "./client";
 import { Song } from "./song";
 import { Playlist } from "./playlist";
-
-const API_URL = "http://localhost:3000";
 
 export interface User {
   id: number;
@@ -14,23 +12,14 @@ export interface User {
   playlists: Playlist[];
 }
 
-const getAuthHeader = () => {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
 const userApi = {
   getUserById: async (id: number): Promise<User> => {
-    const response = await axios.get(`${API_URL}/user/${id}`, {
-      headers: getAuthHeader(),
-    });
+    const response = await apiClient.get(`/user/${id}`);
     return response.data.data;
   },
 
   getUserPlaylists: async (userId: number): Promise<Playlist[]> => {
-    const response = await axios.get(`${API_URL}/playlist/user/${userId}`, {
-      headers: getAuthHeader(),
-    });
+    const response = await apiClient.get(`/playlist/user/${userId}`);
     return response.data.data.playlists;
   },
 };

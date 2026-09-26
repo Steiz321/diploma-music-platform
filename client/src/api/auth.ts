@@ -1,6 +1,4 @@
-import axios from "axios";
-
-const API_URL = "http://localhost:3000"; // Update this with your server URL
+import { apiClient } from "./client";
 
 export interface RegisterRequest {
   username: string;
@@ -30,7 +28,7 @@ export interface AuthResponse {
 
 const authApi = {
   register: async (data: FormData): Promise<AuthResponse> => {
-    const response = await axios.post(`${API_URL}/register`, data, {
+    const response = await apiClient.post("/register", data, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
@@ -39,13 +37,13 @@ const authApi = {
   },
 
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const response = await axios.post(`${API_URL}/login`, data);
+    const response = await apiClient.post("/login", data);
     return response.data.data;
   },
 
   logout: async (token: string): Promise<void> => {
-    await axios.post(
-      `${API_URL}/logout`,
+    await apiClient.post(
+      "/logout",
       {},
       {
         headers: {
