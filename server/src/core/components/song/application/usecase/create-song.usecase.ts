@@ -51,12 +51,11 @@ export default class CreateSongUseCase
         FileObjectName.song,
       );
 
-      const audioUrl = await this.s3Service.uploadFile(
-        audio,
-        formattedAudioName,
-        [FileObjectName.song],
-        true,
-      );
+      const audioUrl = (
+        await this.s3Service.uploadFile(audio, formattedAudioName, [
+          FileObjectName.song,
+        ])
+      ).url;
 
       let coverUrl = mockData.cover;
 
@@ -66,12 +65,11 @@ export default class CreateSongUseCase
           FileObjectName.cover,
         );
 
-        coverUrl = await this.s3Service.uploadFile(
-          cover,
-          formattedCoverFileName,
-          [FileObjectName.cover],
-          true,
-        );
+        coverUrl = (
+          await this.s3Service.uploadFile(cover, formattedCoverFileName, [
+            FileObjectName.cover,
+          ])
+        ).url;
       }
 
       // send audio to assembly to get text

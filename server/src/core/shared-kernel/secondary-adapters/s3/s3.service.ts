@@ -1,57 +1,86 @@
 import * as crypto from 'crypto';
-import { DeleteObjectCommand, PutObjectCommand, S3 } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3,
+} from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
-import { S3ServiceInterface } from '../../ports/s3-service.interface';
+import {
+  S3ServiceInterface,
+  UploadedFile,
+} from '../../ports/s3-service.interface';
 import { Injectable } from '@nestjs/common';
 import { FileObjectName } from './data/enum/file-object-name.enum';
+import { S3Config } from 'src/core/configuration/config.type';
+import { buildPublicFileUrl } from '../../common/public-file-url.util';
 
 @Injectable()
 export class S3Service implements S3ServiceInterface {
   private s3: S3;
+  private readonly config: S3Config;
 
   constructor(private readonly configService: ConfigService) {
+    this.config = this.configService.get<S3Config>('s3');
+
     this.s3 = new S3({
       credentials: {
-        accessKeyId: this.configService.get<string>('s3.accessKeyId'),
-        secretAccessKey: this.configService.get<string>('s3.secretAccessKey'),
+        accessKeyId: this.config.accessKeyId,
+        secretAccessKey: this.config.secretAccessKey,
       },
-      region: this.configService.get<string>('s3.region'),
+      region: this.config.region,
+      // S3-compatible storage (MinIO) is addressed as <endpoint>/<bucket>/<key>
+      ...(this.config.endpoint && {
+        endpoint: this.config.endpoint,
+        forcePathStyle: true,
+      }),
     });
   }
 
+  // Public read access is granted by the bucket policy, not per object
   public async uploadFile(
     file: Express.Multer.File,
     key: string,
     group: string[],
-    isPublicRead: boolean,
-  ): Promise<string> {
+  ): Promise<UploadedFile> {
     const groupKey = this.createFileKey(key, group);
-    const bucketName = this.configService.get<string>('s3.bucket');
 
     const command = new PutObjectCommand({
-      Bucket: bucketName,
+      Bucket: this.config.bucket,
       Body: Buffer.from(file.buffer),
       Key: groupKey,
-      ACL: isPublicRead ? 'public-read' : 'private',
       ContentType: file.mimetype,
       ContentLength: file.size,
     });
 
     await this.s3.send(command);
 
-    const fileUrl = this.getFileUrl(groupKey);
+    return {
+      key: groupKey,
+      url: buildPublicFileUrl(groupKey, this.config.publicBaseUrl),
+    };
+  }
 
-    return fileUrl;
+  public async getFile(key: string): Promise<Buffer> {
+    const response = await this.s3.send(
+      new GetObjectCommand({
+        Bucket: this.config.bucket,
+        Key: key,
+      }),
+    );
+
+    return Buffer.from(await response.Body.transformToByteArray());
   }
 
   public async deleteFileByUrl(url: string): Promise<boolean> {
-    const fileUrl = new URL(url);
-    const bucketName = fileUrl.hostname.split('.')[0];
-    const fileKey = fileUrl.pathname.substring(1);
+    const baseUrl = `${this.config.publicBaseUrl}/`;
+    if (!url.startsWith(baseUrl)) {
+      return false;
+    }
 
     const command = new DeleteObjectCommand({
-      Bucket: bucketName,
-      Key: fileKey,
+      Bucket: this.config.bucket,
+      Key: decodeURIComponent(url.substring(baseUrl.length)),
     });
 
     await this.s3.send(command);
@@ -69,12 +98,5 @@ export class S3Service implements S3ServiceInterface {
 
   private createFileKey(fileKey: string, fileGroup: string[]) {
     return `${fileGroup}/${fileKey}`;
-  }
-
-  private getFileUrl(fileKey: string): string {
-    const awsRegion = this.configService.get<string>('s3.region');
-    const bucketName = this.configService.get<string>('s3.bucket');
-
-    return `https://${bucketName}.s3.${awsRegion}.amazonaws.com/${fileKey}`;
   }
 }

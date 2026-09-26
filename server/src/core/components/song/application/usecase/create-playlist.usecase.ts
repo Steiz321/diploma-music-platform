@@ -46,12 +46,11 @@ export default class CreatePlaylistUseCase
           FileObjectName.cover,
         );
 
-        coverUrl = await this.s3Service.uploadFile(
-          cover,
-          formattedCoverFileName,
-          [FileObjectName.cover],
-          true,
-        );
+        coverUrl = (
+          await this.s3Service.uploadFile(cover, formattedCoverFileName, [
+            FileObjectName.cover,
+          ])
+        ).url;
       }
 
       playlist = await this.playlistRepository.create({

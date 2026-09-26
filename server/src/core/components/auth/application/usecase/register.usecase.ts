@@ -86,12 +86,11 @@ export default class RegisterUseCase
           FileObjectName.avatar,
         );
 
-        avatarUrl = await this.s3Service.uploadFile(
-          avatar,
-          formattedCoverFileName,
-          [FileObjectName.avatar],
-          true,
-        );
+        avatarUrl = (
+          await this.s3Service.uploadFile(avatar, formattedCoverFileName, [
+            FileObjectName.avatar,
+          ])
+        ).url;
       }
 
       newUser = await this.commandBus.execute(
