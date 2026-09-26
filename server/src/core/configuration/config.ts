@@ -53,10 +53,6 @@ const configure = async (): Promise<Configuration> => {
       groqApiKey: process.env.GROQ_API_KEY,
       fakeDelayMs: Number(process.env.FAKE_TRANSCRIPTION_DELAY_MS) || 0,
     },
-    // TODO(step 4): removed together with the AssemblyAI adapter
-    assembly: {
-      apiKey: process.env.ASSEMBLY_API_KEY,
-    },
   };
 };
 

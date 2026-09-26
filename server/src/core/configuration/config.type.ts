@@ -31,15 +31,10 @@ export interface TranscriptionConfig {
   fakeDelayMs: number;
 }
 
-export interface AssemblyConfig {
-  apiKey: string;
-}
-
 export default interface Configuration {
   node: NodeConfig;
   db: SequelizeModuleOptions;
   swagger: SwaggerConfig;
   s3: S3Config;
   transcription: TranscriptionConfig;
-  assembly: AssemblyConfig;
 }

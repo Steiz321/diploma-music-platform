@@ -14,9 +14,10 @@ import {
 import { Song } from '../data/song.dto';
 import { mockData } from 'src/core/shared-kernel/data/constants/mock-data.constant';
 import {
-  AssemblyServiceInterface,
-  AssemblyServiceInterfaceType,
-} from 'src/core/shared-kernel/ports/assembly-service.interface';
+  TranscriptionServiceInterface,
+  TranscriptionServiceInterfaceType,
+} from 'src/core/shared-kernel/ports/transcription-service.interface';
+import { buildLyrics } from 'src/core/shared-kernel/common/build-lyrics.util';
 
 interface CreateSongArguments {
   audio: Express.Multer.File;
@@ -34,8 +35,8 @@ export default class CreateSongUseCase
     private readonly songRepository: SongRepository,
     @Inject(S3ServiceInterfaceType)
     private readonly s3Service: S3ServiceInterface,
-    @Inject(AssemblyServiceInterfaceType)
-    private readonly assemblyService: AssemblyServiceInterface,
+    @Inject(TranscriptionServiceInterfaceType)
+    private readonly transcriptionService: TranscriptionServiceInterface,
   ) {}
 
   public async execute({
@@ -51,11 +52,11 @@ export default class CreateSongUseCase
         FileObjectName.song,
       );
 
-      const audioUrl = (
-        await this.s3Service.uploadFile(audio, formattedAudioName, [
-          FileObjectName.song,
-        ])
-      ).url;
+      const uploadedAudio = await this.s3Service.uploadFile(
+        audio,
+        formattedAudioName,
+        [FileObjectName.song],
+      );
 
       let coverUrl = mockData.cover;
 
@@ -72,14 +73,16 @@ export default class CreateSongUseCase
         ).url;
       }
 
-      // send audio to assembly to get text
-      const text = await this.assemblyService.songToText(audioUrl);
+      const transcription = await this.transcriptionService.transcribe(
+        uploadedAudio.key,
+      );
+      const text = buildLyrics(transcription.segments);
 
       song = await this.songRepository.create({
         name: params.name,
         cover_url: coverUrl,
         user_id: userId,
-        audio: audioUrl,
+        audio: uploadedAudio.url,
         description: null,
         text: text || null,
       });

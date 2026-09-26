@@ -19,7 +19,7 @@ import CreateSongUseCase from './application/usecase/create-song.usecase';
 import GetAllSongsUseCase from './application/usecase/get-all-songs.usecase';
 import GetSongByIdUseCase from './application/usecase/get-song-by-id.usecase';
 import { S3Module } from 'src/core/shared-kernel/secondary-adapters/s3/s3.module';
-import { AssemblyModule } from 'src/core/shared-kernel/secondary-adapters/assembly/assembly.module';
+import { TranscriptionModule } from 'src/core/shared-kernel/secondary-adapters/transcription/transcription.module';
 import { GetSongByIdHandler } from './application/query-handler/get-song-by-id/get-song-by-id.handler';
 import { PlaylistController } from './primary-adapters/playlist.controller';
 import CreatePlaylistUseCase from './application/usecase/create-playlist.usecase';
@@ -62,7 +62,7 @@ const UseCases = [
       SongToPlaylistModel,
     ]),
     S3Module,
-    AssemblyModule,
+    TranscriptionModule,
   ],
   providers: [
     {
