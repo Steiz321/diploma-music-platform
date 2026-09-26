@@ -1,0 +1,125 @@
+# Local development environment: postgres + minio + server + client.
+#   docker compose up            start everything (first run builds images)
+#   docker compose down -v       stop and wipe database / files
+# Optional overrides and secrets (GROQ_API_KEY) go to the root .env, see .env.example.
+
+name: music-platform
+
+x-minio-credentials: &minio-credentials
+  MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+  MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio-secret}
+
+services:
+  postgres:
+    # pgvector: vector similarity search for recommendations (later stage)
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: music
+      POSTGRES_PASSWORD: music
+      POSTGRES_DB: music
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U music -d music']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  minio:
+    # Official minio/minio images are no longer published on Docker Hub;
+    # bitnamilegacy is the frozen Bitnami build of the same MinIO server.
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+    environment:
+      <<: *minio-credentials
+      MINIO_SKIP_CLIENT: 'yes'
+    ports:
+      - '${MINIO_PORT:-9000}:9000' # S3 API, also serves public files to the browser
+      - '${MINIO_CONSOLE_PORT:-9001}:9001' # web console
+    volumes:
+      - minio-data:/bitnami/minio/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fs', 'http://localhost:9000/minio/health/live']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  minio-init:
+    # one-shot: bucket, public-read policy, mock images (infra/minio/init.sh)
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3
+    entrypoint: ['sh', '/init/init.sh']
+    environment:
+      <<: *minio-credentials
+      MINIO_ENDPOINT: http://minio:9000
+      S3_BUCKET: music-files
+      SEED_DIR: /init/seed
+    volumes:
+      - ./infra/minio:/init:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: 'no'
+
+  server:
+    build:
+      context: ./server
+      additional_contexts:
+        infra: ./infra/docker
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      API_DOCS_USER: ${API_DOCS_USER:-}
+      API_DOCS_PASSWORD: ${API_DOCS_PASSWORD:-}
+      # local development secrets; override in the root .env if needed
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-local-dev-encryption-key-32chars}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-dev-jwt-secret}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: music
+      DB_USERNAME: music
+      DB_PASSWORD: music
+      DB_SSL: 'false'
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio-secret}
+      S3_BUCKET: music-files
+      # URL used by the browser, so it points to the port published on the host
+      PUBLIC_FILES_BASE_URL: http://localhost:${MINIO_PORT:-9000}/music-files
+      TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-fake}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      FAKE_TRANSCRIPTION_DELAY_MS: ${FAKE_TRANSCRIPTION_DELAY_MS:-1000}
+    ports:
+      - '${SERVER_PORT:-3000}:3000'
+    volumes:
+      - ./server:/app
+      # container-only: Linux build of native modules (argon2)
+      - server-node-modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  client:
+    build:
+      context: ./client
+      additional_contexts:
+        infra: ./infra/docker
+    environment:
+      VITE_API_URL: http://localhost:${SERVER_PORT:-3000}
+    ports:
+      # host 5000 is taken by AirPlay Receiver on macOS
+      - '${CLIENT_PORT:-5173}:5000'
+    volumes:
+      - ./client:/app
+      - client-node-modules:/app/node_modules
+    depends_on:
+      - server
+
+volumes:
+  postgres-data:
+  minio-data:
+  server-node-modules:
+  client-node-modules:
