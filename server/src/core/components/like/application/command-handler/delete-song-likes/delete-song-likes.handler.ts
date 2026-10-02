@@ -20,17 +20,10 @@ export class DeleteSongLikesCommandHandler
     songId,
     transaction,
   }: DeleteSongLikesCommand): Promise<StatusResponse> {
-    const likes = await this.likeToSongRepository.getAllWhere({
-      song_id: songId,
-    });
-
-    if (likes.length === 0) {
-      return StatusResponse.ok();
-    }
-
-    for (const like of likes) {
-      await this.likeToSongRepository.delete(like.id, transaction);
-    }
+    await this.likeToSongRepository.softDeleteWhere(
+      { song_id: songId },
+      transaction,
+    );
 
     return StatusResponse.ok();
   }

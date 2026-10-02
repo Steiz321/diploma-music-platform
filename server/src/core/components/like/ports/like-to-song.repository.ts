@@ -7,7 +7,14 @@ import { LikeToSongUpdateParams } from '../secondary-adapters/postgres/query-par
 export interface LikeToSongRepository {
   getAllWhere(where: GetLikeToSongWhere): Promise<LikeToSong[]>;
 
+  // active (not soft-deleted) like
   getOneWhere(where: GetLikeToSongWhere): Promise<LikeToSong>;
+
+  // any row of the pair, including a soft-deleted one, locked FOR UPDATE
+  getOneForUpdate(
+    where: Pick<GetLikeToSongWhere, 'user_id' | 'song_id'>,
+    transaction: Transaction,
+  ): Promise<LikeToSong>;
 
   create(
     dto: LikeToSongCreateParams,
@@ -20,7 +27,11 @@ export interface LikeToSongRepository {
     transaction?: Transaction,
   ): Promise<LikeToSong>;
 
-  delete(likeToSongId: number, transaction?: Transaction): Promise<undefined>;
+  // sets deleted_at on the active likes matching `where`
+  softDeleteWhere(
+    where: GetLikeToSongWhere,
+    transaction?: Transaction,
+  ): Promise<void>;
 }
 
 export const LikeToSongRepositoryType = Symbol.for('LikeToSongRepository');

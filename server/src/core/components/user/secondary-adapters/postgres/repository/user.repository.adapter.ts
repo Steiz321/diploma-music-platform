@@ -21,7 +21,8 @@ export class UserRepositoryAdapter implements UserRepository {
           where: { deleted_at: null },
           // a where on include makes it an INNER JOIN; keep users with no rows
           required: false,
-          through: { attributes: [] },
+          // only active likes; unliked rows keep deleted_at as history
+          through: { attributes: [], where: { deleted_at: null } },
           include: [
             {
               association: 'user',
@@ -44,7 +45,8 @@ export class UserRepositoryAdapter implements UserRepository {
           where: { deleted_at: null },
           // a where on include makes it an INNER JOIN; keep users with no rows
           required: false,
-          through: { attributes: [] },
+          // only active likes; unliked rows keep deleted_at as history
+          through: { attributes: [], where: { deleted_at: null } },
           include: [
             {
               association: 'user',

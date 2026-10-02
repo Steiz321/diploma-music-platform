@@ -1,4 +1,11 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Inject,
+  NotFoundException,
+} from '@nestjs/common';
+import { UniqueConstraintError } from 'sequelize';
+import { Sequelize } from 'sequelize-typescript';
 import { UseCase } from 'src/core/shared-kernel/interfaces/use-case';
 import { StatusResponse } from 'src/core/shared-kernel/rest/dto/status-response.dto';
 import { LikeToSongRepositoryType } from '../../ports/like-to-song.repository';
@@ -19,6 +26,7 @@ export default class CreateSongLikeUseCase
     @Inject(LikeToSongRepositoryType)
     private readonly likeToSongRepository: LikeToSongRepository,
     private readonly queryBus: QueryBus,
+    private readonly sequelize: Sequelize,
   ) {}
 
   public async execute({
@@ -31,18 +39,34 @@ export default class CreateSongLikeUseCase
       throw new NotFoundException('Song not found');
     }
 
-    const like = await this.likeToSongRepository.getOneWhere({
-      song_id: songId,
-      user_id: userId,
-    });
+    // one row per user–song pair: unlike sets deleted_at, a repeated like
+    // clears it; the row is locked so concurrent toggles do not interleave
+    try {
+      await this.sequelize.transaction(async (t) => {
+        const like = await this.likeToSongRepository.getOneForUpdate(
+          { song_id: songId, user_id: userId },
+          t,
+        );
 
-    if (like) {
-      await this.likeToSongRepository.delete(like.id);
-    } else {
-      await this.likeToSongRepository.create({
-        song_id: songId,
-        user_id: userId,
+        if (!like) {
+          await this.likeToSongRepository.create(
+            { song_id: songId, user_id: userId },
+            t,
+          );
+        } else {
+          await this.likeToSongRepository.update(
+            { deleted_at: like.deleted_at ? null : new Date() },
+            { id: like.id },
+            t,
+          );
+        }
       });
+    } catch (err) {
+      // the first like of the pair raced with another request
+      if (err instanceof UniqueConstraintError) {
+        throw new ConflictException('Like is already being processed');
+      }
+      throw err;
     }
 
     return StatusResponse.ok();

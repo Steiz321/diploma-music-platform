@@ -7,7 +7,14 @@ import { GetLikeToPlaylistWhere } from '../secondary-adapters/postgres/query-par
 export interface LikeToPlaylistRepository {
   getAllWhere(where: GetLikeToPlaylistWhere): Promise<LikeToPlaylist[]>;
 
+  // active (not soft-deleted) like
   getOneWhere(where: GetLikeToPlaylistWhere): Promise<LikeToPlaylist>;
+
+  // any row of the pair, including a soft-deleted one, locked FOR UPDATE
+  getOneForUpdate(
+    where: Pick<GetLikeToPlaylistWhere, 'user_id' | 'playlist_id'>,
+    transaction: Transaction,
+  ): Promise<LikeToPlaylist>;
 
   create(
     dto: LikeToPlaylistCreateParams,
@@ -20,10 +27,11 @@ export interface LikeToPlaylistRepository {
     transaction?: Transaction,
   ): Promise<LikeToPlaylist>;
 
-  delete(
-    likeToPlaylistId: number,
+  // sets deleted_at on the active likes matching `where`
+  softDeleteWhere(
+    where: GetLikeToPlaylistWhere,
     transaction?: Transaction,
-  ): Promise<undefined>;
+  ): Promise<void>;
 }
 
 export const LikeToPlaylistRepositoryType = Symbol.for(

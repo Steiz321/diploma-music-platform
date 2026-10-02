@@ -23,7 +23,21 @@ export class LikeToSongRepositoryAdapter implements LikeToSongRepository {
   }
 
   async getOneWhere(where: GetLikeToSongWhere): Promise<LikeToSong> {
-    const likeToSong = await this.likeToSongModel.findOne({ where });
+    const likeToSong = await this.likeToSongModel.findOne({
+      where: { ...where, deleted_at: null },
+    });
+    return likeToSong?.toJSON() || null;
+  }
+
+  async getOneForUpdate(
+    where: Pick<GetLikeToSongWhere, 'user_id' | 'song_id'>,
+    transaction: Transaction,
+  ): Promise<LikeToSong> {
+    const likeToSong = await this.likeToSongModel.findOne({
+      where,
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
     return likeToSong?.toJSON() || null;
   }
 
@@ -48,14 +62,13 @@ export class LikeToSongRepositoryAdapter implements LikeToSongRepository {
     return likeToSong[1][0]?.toJSON() || null;
   }
 
-  async delete(
-    likeToSongId: number,
+  async softDeleteWhere(
+    where: GetLikeToSongWhere,
     transaction?: Transaction,
-  ): Promise<undefined> {
-    await this.likeToSongModel.destroy({
-      where: { id: likeToSongId },
-      transaction,
-    });
-    return;
+  ): Promise<void> {
+    await this.likeToSongModel.update(
+      { deleted_at: new Date() },
+      { where: { ...where, deleted_at: null }, transaction },
+    );
   }
 }

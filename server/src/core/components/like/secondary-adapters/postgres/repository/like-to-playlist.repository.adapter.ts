@@ -25,7 +25,21 @@ export class LikeToPlaylistRepositoryAdapter
   }
 
   async getOneWhere(where: GetLikeToPlaylistWhere): Promise<LikeToPlaylist> {
-    const likeToPlaylist = await this.likeToPlaylistModel.findOne({ where });
+    const likeToPlaylist = await this.likeToPlaylistModel.findOne({
+      where: { ...where, deleted_at: null },
+    });
+    return likeToPlaylist?.toJSON() || null;
+  }
+
+  async getOneForUpdate(
+    where: Pick<GetLikeToPlaylistWhere, 'user_id' | 'playlist_id'>,
+    transaction: Transaction,
+  ): Promise<LikeToPlaylist> {
+    const likeToPlaylist = await this.likeToPlaylistModel.findOne({
+      where,
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
     return likeToPlaylist?.toJSON() || null;
   }
 
@@ -52,14 +66,13 @@ export class LikeToPlaylistRepositoryAdapter
     return likeToPlaylist[1][0]?.toJSON() || null;
   }
 
-  async delete(
-    likeToPlaylistId: number,
+  async softDeleteWhere(
+    where: GetLikeToPlaylistWhere,
     transaction?: Transaction,
-  ): Promise<undefined> {
-    await this.likeToPlaylistModel.destroy({
-      where: { id: likeToPlaylistId },
-      transaction,
-    });
-    return;
+  ): Promise<void> {
+    await this.likeToPlaylistModel.update(
+      { deleted_at: new Date() },
+      { where: { ...where, deleted_at: null }, transaction },
+    );
   }
 }
