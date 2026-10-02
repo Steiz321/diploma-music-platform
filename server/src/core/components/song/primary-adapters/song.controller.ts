@@ -30,6 +30,7 @@ import GetSongByIdUseCase from '../application/usecase/get-song-by-id.usecase';
 import { StatusResponse } from 'src/core/shared-kernel/rest/dto/status-response.dto';
 import CreateListenForSongUseCase from '../application/usecase/create-listen-for-song.usecase';
 import DeleteSongUseCase from '../application/usecase/delete-song.usecase';
+import { ListenThrottlerGuard } from '../application/guards/listen-throttler.guard';
 
 @Controller('song')
 @UseGuards(AuthGuard)
@@ -97,10 +98,15 @@ export class SongController {
   @Post(':id/listen')
   @ApiOperation({ summary: 'Create a listen for a song' })
   @ApiResponseDoc(StatusResponse)
+  @UseGuards(ListenThrottlerGuard)
   async createListenForSong(
     @Param('id', ParseIntPipe) id: number,
+    @UserAuth() userAuth: UserAuthRequestObject,
   ): Promise<StatusResponse> {
-    return this.createListenForSongUseCase.execute({ songId: id });
+    return this.createListenForSongUseCase.execute({
+      songId: id,
+      userId: userAuth.user_id,
+    });
   }
 
   @Delete(':id')

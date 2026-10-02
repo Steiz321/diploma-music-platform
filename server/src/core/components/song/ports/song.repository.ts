@@ -20,6 +20,9 @@ export interface SongRepository {
   ): Promise<Song>;
 
   smartDelete(songId: number, transaction?: Transaction): Promise<undefined>;
+
+  // atomic `listens = listens + 1` in the database
+  incrementListens(songId: number, transaction?: Transaction): Promise<void>;
 }
 
 export const SongRepositoryType = Symbol.for('SongRepository');

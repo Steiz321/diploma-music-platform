@@ -101,4 +101,15 @@ export class SongRepositoryAdapter implements SongRepository {
       { where: { id: songId }, transaction },
     );
   }
+
+  async incrementListens(
+    songId: number,
+    transaction?: Transaction,
+  ): Promise<void> {
+    await this.songModel.increment('listens', {
+      by: 1,
+      where: { id: songId },
+      transaction,
+    });
+  }
 }

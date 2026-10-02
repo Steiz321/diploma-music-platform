@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { CqrsModule } from '@nestjs/cqrs';
+import { ThrottlerModule } from '@nestjs/throttler';
 import SongModel from './secondary-adapters/postgres/data/song.model';
 import ListensModel from './secondary-adapters/postgres/data/listens.model';
 import PlaylistModel from './secondary-adapters/postgres/data/playlist.model';
@@ -63,6 +64,8 @@ const UseCases = [
     ]),
     S3Module,
     TranscriptionModule,
+    // POST /song/:id/listen: one counted listen per user–song pair per 30 s
+    ThrottlerModule.forRoot([{ name: 'listen', ttl: 30_000, limit: 1 }]),
   ],
   providers: [
     {
