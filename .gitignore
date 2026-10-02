@@ -18,6 +18,9 @@ build/
 # legacy env folder of the server (contains old AWS / AssemblyAI keys)
 server/env/
 
+# ─── Local planning docs (thesis context, task specs) ────────
+docs/
+
 # ─── Docker / local data ─────────────────────────────────────
 # bind-mounted volume data, if any service is switched from named volumes
 .docker-data/
