@@ -32,6 +32,8 @@ import { GetPlaylistByIdQueryHandler } from './application/query-handler/get-pla
 import CreateListenForSongUseCase from './application/usecase/create-listen-for-song.usecase';
 import DeleteSongUseCase from './application/usecase/delete-song.usecase';
 import DeletePlaylistUseCase from './application/usecase/delete-playlist.usecase';
+import UpdatePlaylistUseCase from './application/usecase/update-playlist.usecase';
+import RemoveSongFromPlaylistUseCase from './application/usecase/remove-song-from-playlist.usecase';
 
 const CommandHandlers = [];
 const QueryHandlers = [
@@ -51,6 +53,8 @@ const UseCases = [
   CreateListenForSongUseCase,
   DeleteSongUseCase,
   DeletePlaylistUseCase,
+  UpdatePlaylistUseCase,
+  RemoveSongFromPlaylistUseCase,
 ];
 
 @Module({

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   ParseIntPipe,
   Post,
   UploadedFile,
@@ -31,6 +32,9 @@ import { GetAllPlaylistsResponse } from '../application/data/response/get-all-pl
 import GetAllPlaylistsUseCase from '../application/usecase/get-all-playlists.usecase';
 import GetPlaylistsByUserIdUseCase from '../application/usecase/get-playlists-by-user.usecase';
 import DeletePlaylistUseCase from '../application/usecase/delete-playlist.usecase';
+import UpdatePlaylistUseCase from '../application/usecase/update-playlist.usecase';
+import RemoveSongFromPlaylistUseCase from '../application/usecase/remove-song-from-playlist.usecase';
+import { UpdatePlaylistRequest } from '../application/data/request/update-playlist.request';
 
 @Controller('playlist')
 @ApiTags('Playlist')
@@ -43,6 +47,8 @@ export class PlaylistController {
     private readonly getAllPlaylistsUseCase: GetAllPlaylistsUseCase,
     private readonly getPlaylistsByUserIdUseCase: GetPlaylistsByUserIdUseCase,
     private readonly deletePlaylistUseCase: DeletePlaylistUseCase,
+    private readonly updatePlaylistUseCase: UpdatePlaylistUseCase,
+    private readonly removeSongFromPlaylistUseCase: RemoveSongFromPlaylistUseCase,
   ) {}
 
   @Get()
@@ -107,6 +113,43 @@ export class PlaylistController {
     return this.addSongToPlaylistUseCase.execute({
       playlistId: id,
       songId: dto.songId,
+      userId: userAuth.user_id,
+    });
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Edit a playlist (only the fields sent are changed)',
+  })
+  @ApiResponseDoc(CreatePlaylistResponse)
+  @UseInterceptors(FileInterceptor('cover'))
+  @ApiConsumes('multipart/form-data', 'application/json')
+  async updatePlaylist(
+    @Param('id', ParseIntPipe) id: number,
+    @UserAuth() userAuth: UserAuthRequestObject,
+    @Body() dto: UpdatePlaylistRequest,
+    @UploadedFile(new TransformFilePipe())
+    cover: Express.Multer.File,
+  ): Promise<CreatePlaylistResponse> {
+    return this.updatePlaylistUseCase.execute({
+      playlistId: id,
+      params: dto,
+      userId: userAuth.user_id,
+      cover,
+    });
+  }
+
+  @Delete(':id/song/:songId')
+  @ApiOperation({ summary: 'Remove a song from a playlist' })
+  @ApiResponseDoc(StatusResponse)
+  async removeSongFromPlaylist(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('songId', ParseIntPipe) songId: number,
+    @UserAuth() userAuth: UserAuthRequestObject,
+  ): Promise<StatusResponse> {
+    return this.removeSongFromPlaylistUseCase.execute({
+      playlistId: id,
+      songId,
       userId: userAuth.user_id,
     });
   }
