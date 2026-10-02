@@ -14,19 +14,12 @@
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.1.0",
     "@mui/material": "^7.0.2",
-    "@reduxjs/toolkit": "^2.7.0",
-    "@tamagui/font-inter": "^1.126.4",
-    "@tamagui/lucide-icons": "^1.126.4",
-    "@tamagui/shorthands": "^1.126.4",
-    "@tamagui/web": "^1.126.4",
     "@tanstack/react-query": "^5.75.1",
     "@types/node": "^22.15.3",
     "axios": "^1.9.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-redux": "^9.2.0",
-    "react-router-dom": "^7.5.3",
-    "tamagui": "^1.126.4"
+    "react-router-dom": "^7.5.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
