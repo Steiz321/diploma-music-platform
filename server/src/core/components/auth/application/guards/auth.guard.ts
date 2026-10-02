@@ -23,13 +23,16 @@ export class AuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
 
-    const authorizationHeader = req.headers.authorization as string;
+    // every failure is the same 401 without details: missing header,
+    // wrong scheme, bad signature, expired token, revoked session
+    const [scheme, token] = String(req.headers.authorization ?? '').split(' ');
 
-    const token = authorizationHeader.split(' ')[1];
-    const isTokenVerified = this.tokenService.verifyToken(token);
+    if (scheme !== 'Bearer' || !token) {
+      throw new UnauthorizedException();
+    }
 
-    if (!isTokenVerified) {
-      throw new UnauthorizedException('Invalid token');
+    if (!this.tokenService.verifyToken(token)) {
+      throw new UnauthorizedException();
     }
 
     const userAuth = await this.queryBus.execute(
@@ -37,7 +40,7 @@ export class AuthGuard implements CanActivate {
     );
 
     if (!userAuth) {
-      throw new UnauthorizedException('Invalid token');
+      throw new UnauthorizedException();
     }
 
     req.userAuth = {
