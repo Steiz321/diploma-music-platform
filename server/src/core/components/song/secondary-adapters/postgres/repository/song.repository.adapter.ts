@@ -15,7 +15,12 @@ export class SongRepositoryAdapter implements SongRepository {
     private readonly songModel: typeof SongModel,
   ) {}
   async getAll(search: string): Promise<Song[]> {
-    const searchParam = search || '';
+    // match the search text literally: escape LIKE wildcards and the escape char,
+    // then let Sequelize quote the whole pattern as a SQL string
+    const escapedSearch = (search || '').replace(/[\\%_]/g, '\\$&');
+    const searchPattern = this.songModel.sequelize.escape(
+      `%${escapedSearch}%`,
+    );
 
     const songs = await this.songModel.findAll({
       where: {
@@ -31,7 +36,7 @@ export class SongRepositoryAdapter implements SongRepository {
         [
           Sequelize.literal(`
             CASE
-              WHEN name ILIKE '%${searchParam}%' THEN 0
+              WHEN name ILIKE ${searchPattern} ESCAPE '\\' THEN 0
               ELSE 1
             END
           `),
