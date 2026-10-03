@@ -53,6 +53,10 @@ const configure = async (): Promise<Configuration> => {
       groqApiKey: process.env.GROQ_API_KEY,
       fakeDelayMs: Number(process.env.FAKE_TRANSCRIPTION_DELAY_MS) || 0,
     },
+    rabbitmq: {
+      uri: process.env.RABBITMQ_URL,
+      publishTimeoutMs: Number(process.env.RABBITMQ_PUBLISH_TIMEOUT_MS) || 5000,
+    },
   };
 };
 

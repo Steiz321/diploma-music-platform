@@ -5,6 +5,7 @@ import config from './core/configuration/config';
 import { PostgresConnectionModule } from './core/shared-kernel/secondary-adapters/postgres/postgres-connection.module';
 import { CryptoModule } from './core/shared-kernel/secondary-adapters/crypto/crypto.module';
 import { S3Module } from './core/shared-kernel/secondary-adapters/s3/s3.module';
+import { RabbitMQConnectionModule } from './core/shared-kernel/secondary-adapters/rabbitmq/rabbitmq.module';
 import { UserModule } from './core/components/user/user.module';
 import { AuthModule } from './core/components/auth/auth.module';
 import { CommentModule } from './core/components/comment/comment.module';
@@ -21,6 +22,7 @@ import { LogRequestMiddleware } from './core/shared-kernel/rest/middleware/log-r
     PostgresConnectionModule,
     CryptoModule,
     S3Module,
+    RabbitMQConnectionModule,
     UserModule,
     AuthModule,
     CommentModule,

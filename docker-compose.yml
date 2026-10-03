@@ -1,9 +1,13 @@
-# Local development environment: postgres + minio + core + client (npm workspaces).
+# Local development environment: postgres + minio + rabbitmq + core + client (npm workspaces).
 #   docker compose up            start everything (first run builds images)
 #   docker compose down -v       stop and wipe database / files
 # Optional overrides and secrets (GROQ_API_KEY) go to the root .env, see .env.example.
 
 name: music-platform
+
+x-rabbitmq-credentials: &rabbitmq-credentials
+  RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-platform}
+  RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-platform-secret}
 
 x-minio-credentials: &minio-credentials
   MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
@@ -62,6 +66,22 @@ services:
         condition: service_healthy
     restart: 'no'
 
+  rabbitmq:
+    # management plugin: web UI and HTTP API on 15672
+    image: rabbitmq:4-management
+    environment:
+      <<: *rabbitmq-credentials
+    ports:
+      - '${RABBITMQ_PORT:-5672}:5672'
+      - '${RABBITMQ_MANAGEMENT_PORT:-15672}:15672'
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
   core:
     build:
       context: .
@@ -90,6 +110,7 @@ services:
       TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-fake}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       FAKE_TRANSCRIPTION_DELAY_MS: ${FAKE_TRANSCRIPTION_DELAY_MS:-1000}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-platform}:${RABBITMQ_PASSWORD:-platform-secret}@rabbitmq:5672
     ports:
       - '${SERVER_PORT:-3000}:3000'
     volumes:
@@ -105,6 +126,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
 
   client:
     build:
@@ -127,6 +150,7 @@ services:
 volumes:
   postgres-data:
   minio-data:
+  rabbitmq-data:
   core-node-modules:
   core-app-node-modules:
   client-node-modules:

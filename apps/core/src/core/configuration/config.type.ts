@@ -31,10 +31,18 @@ export interface TranscriptionConfig {
   fakeDelayMs: number;
 }
 
+export interface RabbitMQConfig {
+  // amqp://user:password@host:5672
+  uri: string;
+  // how long a publish waits for the broker confirm
+  publishTimeoutMs: number;
+}
+
 export default interface Configuration {
   node: NodeConfig;
   db: SequelizeModuleOptions;
   swagger: SwaggerConfig;
   s3: S3Config;
   transcription: TranscriptionConfig;
+  rabbitmq: RabbitMQConfig;
 }
