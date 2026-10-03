@@ -57,6 +57,11 @@ const configure = async (): Promise<Configuration> => {
       uri: process.env.RABBITMQ_URL,
       publishTimeoutMs: Number(process.env.RABBITMQ_PUBLISH_TIMEOUT_MS) || 5000,
     },
+    outbox: {
+      relayIntervalMs: Number(process.env.OUTBOX_RELAY_INTERVAL_MS) || 1000,
+      batchSize: Number(process.env.OUTBOX_RELAY_BATCH_SIZE) || 100,
+      retentionDays: 7,
+    },
   };
 };
 

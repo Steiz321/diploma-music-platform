@@ -38,6 +38,15 @@ export interface RabbitMQConfig {
   publishTimeoutMs: number;
 }
 
+export interface OutboxConfig {
+  // how often the relay looks for unpublished events
+  relayIntervalMs: number;
+  // max events published per relay cycle
+  batchSize: number;
+  // published events older than this are deleted daily
+  retentionDays: number;
+}
+
 export default interface Configuration {
   node: NodeConfig;
   db: SequelizeModuleOptions;
@@ -45,4 +54,5 @@ export default interface Configuration {
   s3: S3Config;
   transcription: TranscriptionConfig;
   rabbitmq: RabbitMQConfig;
+  outbox: OutboxConfig;
 }
