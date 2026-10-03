@@ -28,5 +28,7 @@ WORKDIR /app/apps/core
 EXPOSE 3000
 
 ENTRYPOINT ["dev-entrypoint.sh"]
-# apply migrations, then start Nest in watch mode
-CMD ["sh", "-c", "npm run migration:run && npm run start:dev"]
+# 1. build @platform/contracts once (Core imports its dist/), then keep
+#    `tsc -b --watch` running in the background so contract changes are rebuilt
+# 2. apply migrations, then start Nest in watch mode
+CMD ["sh", "-c", "npm run build -w @platform/contracts && (npm run watch -w @platform/contracts &) && npm run migration:run && npm run start:dev"]
