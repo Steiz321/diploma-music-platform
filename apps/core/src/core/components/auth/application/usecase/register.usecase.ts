@@ -20,6 +20,12 @@ import {
   S3ServiceInterfaceType,
 } from 'src/core/shared-kernel/ports/s3-service.interface';
 import { FileObjectName } from 'src/core/shared-kernel/secondary-adapters/s3/data/enum/file-object-name.enum';
+import { EVENT_TYPES } from '@platform/contracts';
+import {
+  OutboxPort,
+  OutboxPortType,
+} from 'src/core/components/outbox/ports/outbox.port';
+import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface RegisterArguments {
   username: string;
@@ -42,6 +48,8 @@ export default class RegisterUseCase
     private readonly sequelize: Sequelize,
     @Inject(S3ServiceInterfaceType)
     private readonly s3Service: S3ServiceInterface,
+    @Inject(OutboxPortType)
+    private readonly outbox: OutboxPort,
   ) {}
 
   public async execute({
@@ -133,6 +141,15 @@ export default class RegisterUseCase
           },
           t,
         ),
+      );
+
+      await this.outbox.add(
+        newEvent(
+          EVENT_TYPES.userRegistered,
+          { user_id: newUser.id },
+          newUser.id,
+        ),
+        { transaction: t, aggregateType: 'user', aggregateId: newUser.id },
       );
 
       await t.commit();

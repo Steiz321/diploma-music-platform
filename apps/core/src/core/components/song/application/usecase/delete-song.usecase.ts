@@ -21,6 +21,12 @@ import {
 } from '../../ports/listens.repository';
 import { CommandBus } from '@nestjs/cqrs';
 import { DeleteSongLikesCommand } from 'src/core/components/like/application/command-handler/delete-song-likes/delete-song-likes.command';
+import { EVENT_TYPES } from '@platform/contracts';
+import {
+  OutboxPort,
+  OutboxPortType,
+} from 'src/core/components/outbox/ports/outbox.port';
+import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface DeleteSongArguments {
   songId: number;
@@ -40,6 +46,8 @@ export default class DeleteSongUseCase
     private readonly songToPlaylistRepository: SongToPlaylistRepository,
     @Inject(ListensRepositoryType)
     private readonly listensRepository: ListensRepository,
+    @Inject(OutboxPortType)
+    private readonly outbox: OutboxPort,
   ) {}
 
   public async execute({
@@ -88,6 +96,15 @@ export default class DeleteSongUseCase
 
       // delete song
       await this.songRepository.smartDelete(songId, t);
+
+      await this.outbox.add(
+        newEvent(
+          EVENT_TYPES.songDeleted,
+          { song_id: songId, author_id: song.user_id },
+          userId,
+        ),
+        { transaction: t, aggregateType: 'song', aggregateId: songId },
+      );
 
       await t.commit();
     } catch (err) {

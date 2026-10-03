@@ -27,9 +27,11 @@ const CommandHandlers = [
   DeleteSongLikesCommandHandler,
   DeletePlaylistLikesCommandHandler,
 ];
+import { OutboxModule } from 'src/core/components/outbox/outbox.module';
 
 @Module({
   imports: [
+    OutboxModule,
     CqrsModule,
     SequelizeModule.forFeature([LikeToSongModel, LikeToPlaylistModel]),
   ],

@@ -56,9 +56,11 @@ const UseCases = [
   UpdatePlaylistUseCase,
   RemoveSongFromPlaylistUseCase,
 ];
+import { OutboxModule } from 'src/core/components/outbox/outbox.module';
 
 @Module({
   imports: [
+    OutboxModule,
     CqrsModule,
     SequelizeModule.forFeature([
       SongModel,

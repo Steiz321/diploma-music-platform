@@ -12,6 +12,12 @@ import { LikeToSongRepositoryType } from '../../ports/like-to-song.repository';
 import { LikeToSongRepository } from '../../ports/like-to-song.repository';
 import { QueryBus } from '@nestjs/cqrs';
 import { GetSongByIdQuery } from 'src/core/components/song/application/query-handler/get-song-by-id/get-song-by-id.query';
+import { EVENT_TYPES } from '@platform/contracts';
+import {
+  OutboxPort,
+  OutboxPortType,
+} from 'src/core/components/outbox/ports/outbox.port';
+import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface CreateSongLikeArgument {
   songId: number;
@@ -27,6 +33,8 @@ export default class CreateSongLikeUseCase
     private readonly likeToSongRepository: LikeToSongRepository,
     private readonly queryBus: QueryBus,
     private readonly sequelize: Sequelize,
+    @Inject(OutboxPortType)
+    private readonly outbox: OutboxPort,
   ) {}
 
   public async execute({
@@ -48,6 +56,9 @@ export default class CreateSongLikeUseCase
           t,
         );
 
+        // liked: a new row or a restored soft-deleted one
+        const liked = !like || !!like.deleted_at;
+
         if (!like) {
           await this.likeToSongRepository.create(
             { song_id: songId, user_id: userId },
@@ -55,11 +66,20 @@ export default class CreateSongLikeUseCase
           );
         } else {
           await this.likeToSongRepository.update(
-            { deleted_at: like.deleted_at ? null : new Date() },
+            { deleted_at: liked ? null : new Date() },
             { id: like.id },
             t,
           );
         }
+
+        await this.outbox.add(
+          newEvent(
+            liked ? EVENT_TYPES.songLiked : EVENT_TYPES.songUnliked,
+            { song_id: songId, user_id: userId },
+            userId,
+          ),
+          { transaction: t, aggregateType: 'song', aggregateId: songId },
+        );
       });
     } catch (err) {
       // the first like of the pair raced with another request

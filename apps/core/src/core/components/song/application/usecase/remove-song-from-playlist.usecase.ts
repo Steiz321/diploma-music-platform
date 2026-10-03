@@ -14,6 +14,13 @@ import {
   SongToPlaylistRepositoryType,
 } from '../../ports/song-to-playlist.repository';
 import { StatusResponse } from 'src/core/shared-kernel/rest/dto/status-response.dto';
+import { Sequelize } from 'sequelize-typescript';
+import { EVENT_TYPES } from '@platform/contracts';
+import {
+  OutboxPort,
+  OutboxPortType,
+} from 'src/core/components/outbox/ports/outbox.port';
+import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface RemoveSongFromPlaylistArguments {
   songId: number;
@@ -30,6 +37,9 @@ export default class RemoveSongFromPlaylistUseCase
     private readonly playlistRepository: PlaylistRepository,
     @Inject(SongToPlaylistRepositoryType)
     private readonly songToPlaylistRepository: SongToPlaylistRepository,
+    @Inject(OutboxPortType)
+    private readonly outbox: OutboxPort,
+    private readonly sequelize: Sequelize,
   ) {}
 
   public async execute({
@@ -60,7 +70,22 @@ export default class RemoveSongFromPlaylistUseCase
       throw new NotFoundException('Song is not in the playlist');
     }
 
-    await this.songToPlaylistRepository.delete(songToPlaylist.id);
+    await this.sequelize.transaction(async (t) => {
+      await this.songToPlaylistRepository.delete(songToPlaylist.id, t);
+
+      await this.outbox.add(
+        newEvent(
+          EVENT_TYPES.playlistSongRemoved,
+          { playlist_id: playlistId, song_id: songId, user_id: userId },
+          userId,
+        ),
+        {
+          transaction: t,
+          aggregateType: 'playlist',
+          aggregateId: playlistId,
+        },
+      );
+    });
 
     return StatusResponse.ok();
   }

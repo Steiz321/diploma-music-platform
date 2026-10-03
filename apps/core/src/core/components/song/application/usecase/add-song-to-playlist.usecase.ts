@@ -19,6 +19,13 @@ import {
   SongToPlaylistRepositoryType,
 } from '../../ports/song-to-playlist.repository';
 import { StatusResponse } from 'src/core/shared-kernel/rest/dto/status-response.dto';
+import { Sequelize } from 'sequelize-typescript';
+import { EVENT_TYPES } from '@platform/contracts';
+import {
+  OutboxPort,
+  OutboxPortType,
+} from 'src/core/components/outbox/ports/outbox.port';
+import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface AddSongToPlaylistArguments {
   songId: number;
@@ -37,6 +44,9 @@ export default class AddSongToPlaylistUseCase
     private readonly songRepository: SongRepository,
     @Inject(SongToPlaylistRepositoryType)
     private readonly songToPlaylistRepository: SongToPlaylistRepository,
+    @Inject(OutboxPortType)
+    private readonly outbox: OutboxPort,
+    private readonly sequelize: Sequelize,
   ) {}
 
   public async execute({
@@ -73,9 +83,24 @@ export default class AddSongToPlaylistUseCase
       throw new ConflictException('Song already in playlist');
     }
 
-    await this.songToPlaylistRepository.create({
-      song_id: song.id,
-      playlist_id: playlist.id,
+    await this.sequelize.transaction(async (t) => {
+      await this.songToPlaylistRepository.create(
+        { song_id: song.id, playlist_id: playlist.id },
+        t,
+      );
+
+      await this.outbox.add(
+        newEvent(
+          EVENT_TYPES.playlistSongAdded,
+          { playlist_id: playlist.id, song_id: song.id, user_id: userId },
+          userId,
+        ),
+        {
+          transaction: t,
+          aggregateType: 'playlist',
+          aggregateId: playlist.id,
+        },
+      );
     });
 
     return StatusResponse.ok();

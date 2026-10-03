@@ -14,6 +14,7 @@ import { LikeModule } from './core/components/like/like.module';
 import { SongModule } from './core/components/song/song.module';
 import { OutboxModule } from './core/components/outbox/outbox.module';
 import { LogRequestMiddleware } from './core/shared-kernel/rest/middleware/log-request.middleware';
+import { RequestContextMiddleware } from './core/shared-kernel/request-context/request-context.middleware';
 
 @Module({
   imports: [
@@ -38,6 +39,8 @@ import { LogRequestMiddleware } from './core/shared-kernel/rest/middleware/log-r
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(LogRequestMiddleware).forRoutes('*');
+    consumer
+      .apply(RequestContextMiddleware, LogRequestMiddleware)
+      .forRoutes('*');
   }
 }

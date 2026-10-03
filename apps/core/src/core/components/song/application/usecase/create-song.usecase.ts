@@ -19,6 +19,13 @@ import {
 } from 'src/core/shared-kernel/ports/transcription-service.interface';
 import { buildLyrics } from 'src/core/shared-kernel/common/build-lyrics.util';
 import { TranscriptionStatus } from 'src/core/shared-kernel/data/enum/transcription-status.enum';
+import { EVENT_TYPES } from '@platform/contracts';
+import { Sequelize } from 'sequelize-typescript';
+import {
+  OutboxPort,
+  OutboxPortType,
+} from 'src/core/components/outbox/ports/outbox.port';
+import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface CreateSongArguments {
   audio: Express.Multer.File;
@@ -40,6 +47,9 @@ export default class CreateSongUseCase
     private readonly s3Service: S3ServiceInterface,
     @Inject(TranscriptionServiceInterfaceType)
     private readonly transcriptionService: TranscriptionServiceInterface,
+    @Inject(OutboxPortType)
+    private readonly outbox: OutboxPort,
+    private readonly sequelize: Sequelize,
   ) {}
 
   public async execute({
@@ -78,14 +88,36 @@ export default class CreateSongUseCase
         ).url;
       }
 
-      // saved first with transcription_status = pending
-      song = await this.songRepository.create({
-        name: params.name,
-        cover_url: coverUrl,
-        user_id: userId,
-        audio: uploadedAudio.url,
-        description: null,
-        text: null,
+      // saved first with transcription_status = pending; the song and its
+      // song.uploaded event are committed together
+      song = await this.sequelize.transaction(async (t) => {
+        const created = await this.songRepository.create(
+          {
+            name: params.name,
+            cover_url: coverUrl,
+            user_id: userId,
+            audio: uploadedAudio.url,
+            description: null,
+            text: null,
+          },
+          t,
+        );
+
+        await this.outbox.add(
+          newEvent(
+            EVENT_TYPES.songUploaded,
+            {
+              song_id: created.id,
+              author_id: userId,
+              audio_key: audioKey,
+              title: created.name,
+            },
+            userId,
+          ),
+          { transaction: t, aggregateType: 'song', aggregateId: created.id },
+        );
+
+        return created;
       });
     } catch (err) {
       this.logger.error(`Error creating song: ${err.message}`, err.stack);
