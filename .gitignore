@@ -16,7 +16,7 @@ build/
 !.env.example
 *.local
 # legacy env folder of the server (contains old AWS / AssemblyAI keys)
-server/env/
+apps/core/env/
 
 # ─── Local planning docs (thesis context, task specs) ────────
 docs/

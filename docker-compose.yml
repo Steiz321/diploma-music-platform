@@ -1,4 +1,4 @@
-# Local development environment: postgres + minio + server + client.
+# Local development environment: postgres + minio + core + client (npm workspaces).
 #   docker compose up            start everything (first run builds images)
 #   docker compose down -v       stop and wipe database / files
 # Optional overrides and secrets (GROQ_API_KEY) go to the root .env, see .env.example.
@@ -62,11 +62,10 @@ services:
         condition: service_healthy
     restart: 'no'
 
-  server:
+  core:
     build:
-      context: ./server
-      additional_contexts:
-        infra: ./infra/docker
+      context: .
+      dockerfile: apps/core/Dockerfile
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -94,9 +93,13 @@ services:
     ports:
       - '${SERVER_PORT:-3000}:3000'
     volumes:
-      - ./server:/app
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - ./apps/core:/app/apps/core
+      - ./packages:/app/packages
       # container-only: Linux build of native modules (argon2)
-      - server-node-modules:/app/node_modules
+      - core-node-modules:/app/node_modules
+      - core-app-node-modules:/app/apps/core/node_modules
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,22 +108,26 @@ services:
 
   client:
     build:
-      context: ./client
-      additional_contexts:
-        infra: ./infra/docker
+      context: .
+      dockerfile: apps/client/Dockerfile
     environment:
       VITE_API_URL: http://localhost:${SERVER_PORT:-3000}
     ports:
       # host 5000 is taken by AirPlay Receiver on macOS
       - '${CLIENT_PORT:-5173}:5000'
     volumes:
-      - ./client:/app
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - ./apps/client:/app/apps/client
       - client-node-modules:/app/node_modules
+      - client-app-node-modules:/app/apps/client/node_modules
     depends_on:
-      - server
+      - core
 
 volumes:
   postgres-data:
   minio-data:
-  server-node-modules:
+  core-node-modules:
+  core-app-node-modules:
   client-node-modules:
+  client-app-node-modules:

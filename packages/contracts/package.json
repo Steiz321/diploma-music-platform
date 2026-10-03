@@ -1,0 +1,19 @@
+{
+  "name": "@platform/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Event envelope, event types and payloads shared by the platform services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "watch": "tsc -b --watch --preserveWatchOutput"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.7.3"
+  }
+}

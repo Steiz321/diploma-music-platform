@@ -9,7 +9,7 @@ import {
   WhisperVerboseJson,
 } from './whisper-verbose-json.mapper';
 
-// server/fixtures: the same relative path works from src/ and dist/
+// apps/core/fixtures: the same relative path works from src/ and dist/
 const FIXTURE_PATH = resolve(
   __dirname,
   '../../../../..',

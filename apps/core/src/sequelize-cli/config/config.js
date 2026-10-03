@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 
-// server/.env is optional: in Docker the variables come from the environment,
+// apps/core/.env is optional: in Docker the variables come from the environment,
 // and they take precedence over the file.
 const envPath = path.resolve(__dirname, '../../../.env');
 if (fs.existsSync(envPath)) {

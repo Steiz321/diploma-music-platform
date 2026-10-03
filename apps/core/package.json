@@ -1,5 +1,5 @@
 {
-  "name": "server",
+  "name": "@platform/core",
   "version": "0.0.1",
   "description": "",
   "author": "",
@@ -13,13 +13,13 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "migration:create": "cd src/sequelize-cli && npx sequelize-cli migration:generate --name ",
-    "migration:run": "cd src/sequelize-cli && npx sequelize-cli db:migrate",
-    "migration:undo": "cd src/sequelize-cli && npx sequelize-cli db:migrate:undo",
+    "migration:create": "cd src/sequelize-cli && sequelize-cli migration:generate --name ",
+    "migration:run": "cd src/sequelize-cli && sequelize-cli db:migrate",
+    "migration:undo": "cd src/sequelize-cli && sequelize-cli db:migrate:undo",
     "schema:check": "ts-node -r tsconfig-paths/register scripts/check-schema.ts",
-    "seed:create": "cd src/sequelize-cli && npx sequelize-cli seed:generate --name ",
-    "seed:run": "cd src/sequelize-cli && npx sequelize-cli db:seed:all",
-    "seed:undo": "cd src/sequelize-cli && npx sequelize-cli db:seed:undo"
+    "seed:create": "cd src/sequelize-cli && sequelize-cli seed:generate --name ",
+    "seed:run": "cd src/sequelize-cli && sequelize-cli db:seed:all",
+    "seed:undo": "cd src/sequelize-cli && sequelize-cli db:seed:undo"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.802.0",

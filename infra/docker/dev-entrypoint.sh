@@ -1,15 +1,17 @@
 #!/bin/sh
-# Dev entrypoint for Node services with the source code bind-mounted.
-# node_modules lives in a Docker volume (native modules must be built for
-# Linux), so reinstall it whenever package-lock.json changes.
+# Dev entrypoint for Node services of the npm workspace with the source code
+# bind-mounted. node_modules lives in Docker volumes (native modules must be
+# built for Linux), so reinstall whenever the root package-lock.json changes.
+# NPM_WORKSPACE limits the install to one workspace (e.g. @platform/core).
 set -e
 
-LOCK_HASH="$(sha256sum package-lock.json | cut -d ' ' -f 1)"
-HASH_FILE=node_modules/.package-lock.sha256
+ROOT=/app
+LOCK_HASH="$(sha256sum "$ROOT/package-lock.json" | cut -d ' ' -f 1)"
+HASH_FILE="$ROOT/node_modules/.package-lock.sha256"
 
 if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE")" != "$LOCK_HASH" ]; then
   echo "package-lock.json changed, running npm ci..."
-  npm ci --no-audit --no-fund
+  (cd "$ROOT" && npm ci --no-audit --no-fund ${NPM_WORKSPACE:+--workspace="$NPM_WORKSPACE"})
   echo "$LOCK_HASH" > "$HASH_FILE"
 fi
 
