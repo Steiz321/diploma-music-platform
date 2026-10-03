@@ -5,6 +5,8 @@ interface NodeConfig {
   port: number;
   encryptionKey: string;
   jwtSecretKey: string;
+  // pino level: trace | debug | info | warn | error
+  logLevel: string;
 }
 
 export interface SwaggerConfig {

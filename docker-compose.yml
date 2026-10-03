@@ -111,8 +111,23 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       FAKE_TRANSCRIPTION_DELAY_MS: ${FAKE_TRANSCRIPTION_DELAY_MS:-1000}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-platform}:${RABBITMQ_PASSWORD:-platform-secret}@rabbitmq:5672
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - '${SERVER_PORT:-3000}:3000'
+    healthcheck:
+      # GET /health: database + RabbitMQ (the image has no curl)
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # first start may run npm ci and compile before listening
+      start_period: 180s
     volumes:
       - ./package.json:/app/package.json:ro
       - ./package-lock.json:/app/package-lock.json:ro

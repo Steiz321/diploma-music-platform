@@ -21,6 +21,7 @@ const configure = async (): Promise<Configuration> => {
       nodeEnv: process.env.NODE_ENV,
       encryptionKey: process.env.ENCRYPTION_KEY,
       jwtSecretKey: process.env.JWT_SECRET_KEY,
+      logLevel: process.env.LOG_LEVEL || 'info',
     },
     swagger: {
       username: process.env.API_DOCS_USER,

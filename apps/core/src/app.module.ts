@@ -13,7 +13,8 @@ import { CommentModule } from './core/components/comment/comment.module';
 import { LikeModule } from './core/components/like/like.module';
 import { SongModule } from './core/components/song/song.module';
 import { OutboxModule } from './core/components/outbox/outbox.module';
-import { LogRequestMiddleware } from './core/shared-kernel/rest/middleware/log-request.middleware';
+import { HealthModule } from './core/components/health/health.module';
+import { LoggerModule } from './core/shared-kernel/logging/logger.module';
 import { RequestContextMiddleware } from './core/shared-kernel/request-context/request-context.middleware';
 
 @Module({
@@ -22,6 +23,7 @@ import { RequestContextMiddleware } from './core/shared-kernel/request-context/r
       isGlobal: true,
       load: [config],
     }),
+    LoggerModule,
     ScheduleModule.forRoot(),
     PostgresConnectionModule,
     CryptoModule,
@@ -33,14 +35,13 @@ import { RequestContextMiddleware } from './core/shared-kernel/request-context/r
     CommentModule,
     LikeModule,
     SongModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer
-      .apply(RequestContextMiddleware, LogRequestMiddleware)
-      .forRoutes('*');
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
   }
 }
