@@ -3,19 +3,21 @@
 > Технічний огляд поточного стану репозиторію `diploma/` для обговорення подальшої розробки
 > (магістерська тема: «Побудова мікросервісної архітектури музичної платформи з використанням
 > поведінкової аналітики та ШІ»). Документ описує **лише те, що є в коді**; розбіжності та баги
-> позначені явно. Стан на 2026-09-26.
+> позначені явно. Початковий опис — стан на 2026-09-26; розділи, яких торкнувся етап 2
+> (багфікси, монорепо, RabbitMQ, transactional outbox, логи й health checks), оновлено станом на 2026-10-03.
+> Інфраструктура етапу 1 (Docker Compose, MinIO замість AWS S3, Groq замість AssemblyAI) описана в `README.md`;
+> розділи 7, 8 і 12 цього документа ще описують бакалаврський стан.
 
 ---
 
 ## 0. TL;DR
 
-- **Два застосунки** в одній папці, без спільного кореня: `server/` (NestJS 11 + Sequelize 6 + PostgreSQL) і `client/` (React 19 + Vite 6 + MUI 7).
-- Репозиторій **не є git-репозиторієм**, немає Docker, CI, тестів, `.env.example`.
-- Бекенд — **модульний моноліт у стилі гексагональної архітектури** (ports & adapters) + CQRS-шина `@nestjs/cqrs` для міжмодульних викликів (query/command handlers). Доменні події (EventBus) **не використовуються**.
+- **Монорепо на npm workspaces**: `apps/core` (NestJS 11 + Sequelize 6 + PostgreSQL), `apps/client` (React 19 + Vite 6 + MUI 7), `packages/contracts` (`@platform/contracts` — контракти подій). Git, Docker Compose, `.env.example`; CI немає.
+- Core — **модульний моноліт у стилі гексагональної архітектури** (ports & adapters) + CQRS-шина `@nestjs/cqrs` для міжмодульних викликів (query/command handlers). Доменні події пишуться в **transactional outbox** (`outbox_events`) у транзакції use case'а і публікуються релеєм у **RabbitMQ** (topic exchange `platform.events`). `EventBus` з `@nestjs/cqrs` для цього свідомо не використовується.
 - Файли (аудіо, обкладинки, аватари) — **AWS S3, публічні URL**; стрімінг — браузерний `<audio src="https://bucket.s3...">` напряму з S3 (бекенд аудіо не проксує).
 - ШІ-транскрипція — **AssemblyAI** (`speech_model: 'slam-1'`), викликається **синхронно всередині HTTP-запиту створення пісні**; результат — поле `song.text`.
-- Поведінкові дані сьогодні: лайки (toggle, при unlike **фізичне видалення**), лічильник `song.listens` (інкремент на `ended`, **без user_id**), таблиця `listens` **існує, але ніколи не заповнюється**. Жодних подій play/pause/seek/skip на бекенд не надходить.
-- Кілька суттєвих багів/розбіжностей (див. §15), зокрема: плутанина `user_auth.id` vs `user.id`, розбіжність схем міграцій і моделей (`playlist.owner_id` vs `user_id`), SQL-ін'єкція в пошуку.
+- Поведінкові дані сьогодні: лайки (toggle з **м'яким видаленням**, один рядок на пару), кожне прослуховування на `ended` — рядок у `listens` з `user_id` + атомарний інкремент `song.listens` (rate limit 1 раз на 30 с на пару користувач–пісня), доменні події `song.liked`/`song.unliked`/`playlist.song_added`/... у RabbitMQ. Подій play/pause/seek/skip на бекенд поки не надходить (`POST /events` — наступний етап).
+- Відомі проблеми — §15; виправлені на етапі 2 позначені ✅.
 
 ---
 
@@ -31,10 +33,10 @@
 | Файлове сховище | AWS S3 (`@aws-sdk/client-s3` 3.802) |
 | ШІ | AssemblyAI SDK (`assemblyai` 4.12.2) |
 
-### Бекенд (`server/package.json`) — встановлені версії
+### Бекенд (`apps/core/package.json`) — встановлені версії
 | Пакет | Версія | Використовується? |
 |---|---|---|
-| `@nestjs/core`, `@nestjs/common`, `@nestjs/platform-express` | 11.1.x | так (Express під капотом) |
+| `@nestjs/core`, `@nestjs/common`, `@nestjs/platform-express` | 11.2.7 | так (Express під капотом) |
 | `@nestjs/config` | 4.0.2 | так |
 | `@nestjs/cqrs` | 11.0.3 | так (QueryBus/CommandBus) |
 | `@nestjs/jwt` | 11.0.0 | так |
@@ -49,12 +51,17 @@
 | `@aws-sdk/client-s3` | 3.802 | так |
 | `assemblyai` | 4.12.2 | так |
 | `dotenv` | 16.5 (dev) | так (читання `env/.env`) |
-| `@nestjs/passport`, `passport`, `passport-jwt` | — | **ні** (встановлені, не використовуються) |
-| `@nestjs/schedule` | 6.0 | **ні** |
-| `bcrypt`, `joi`, `uuid` | — | **ні** |
-| `jest`, `ts-jest`, `supertest`, `@nestjs/testing` | — | налаштовані, але **тестів немає** |
+| `@nestjs/schedule` | 6.0 | так (релей outbox, щоденне очищення) |
+| `@golevelup/nestjs-rabbitmq` | 9.1 | так (з'єднання з RabbitMQ, publisher confirms) |
+| `@nestjs/throttler` | 6.7 | так (rate limit `POST /song/:id/listen`) |
+| `nestjs-pino` + `pino`, `pino-http` | 5.3 / 10 / 11 | так (JSON-логи, request id) |
+| `@nestjs/terminus` | 12.1 | так (`GET /health`) |
+| `@platform/contracts` | workspace | так (envelope і типи подій) |
+| `jest`, `ts-jest`, `@nestjs/testing` | — | так (`npm test`, unit-тести релею outbox) |
 
-### Фронтенд (`client/package.json`) — встановлені версії
+`passport`, `passport-jwt`, `@nestjs/passport`, `bcrypt`, `joi`, `uuid` видалено на етапі 2 (не використовувалися).
+
+### Фронтенд (`apps/client/package.json`) — встановлені версії
 | Пакет | Версія | Використовується? |
 |---|---|---|
 | `react` / `react-dom` | 19.1.0 | так |
@@ -62,9 +69,9 @@
 | `react-router-dom` | 7.5.3 | так (`BrowserRouter`) |
 | `@mui/material`, `@mui/icons-material`, `@emotion/*` | 7.1.0 | так (весь UI) |
 | `axios` | 1.9.0 | так (HTTP) |
-| `@reduxjs/toolkit`, `react-redux` | 2.7.0 / 9.2 | **фактично ні** — store створено без редюсерів і не підключено `<Provider>`; `authSlice` не використовується |
 | `@tanstack/react-query` | 5.75.1 | **ні** |
-| `tamagui` та `@tamagui/*` | 1.126.4 | **ні** (є тільки `tamagui.config.ts`, ніде не імпортується) |
+
+Redux (`@reduxjs/toolkit`, `react-redux`) і Tamagui видалено на етапі 2 разом із непідключеними `store/`, `features/auth/authSlice.ts`, `tamagui.config.ts`.
 
 ---
 
@@ -72,49 +79,56 @@
 
 ```
 diploma/
-├── client/                         # SPA на React + Vite
+├── package.json, package-lock.json # npm workspaces: packages/*, apps/*; єдиний lock
+├── docker-compose.yml              # postgres, minio (+init), rabbitmq, core, client
+├── infra/                          # dev-entrypoint, ініціалізація MinIO
+├── packages/
+│   └── contracts/                  # @platform/contracts: EventEnvelope, EVENT_TYPES, payload-и,
+│                                   # EXCHANGES, createEnvelope; tsc -b → dist/ (CommonJS)
+├── apps/client/                    # SPA на React + Vite
 │   ├── index.html                  # точка входу Vite (title "Vite + React + TS")
 │   ├── vite.config.ts              # порт 5000, host: true
-│   ├── public/
 │   └── src/
 │       ├── main.tsx                # ReactDOM.createRoot → <App/>
 │       ├── App.tsx                 # тема MUI, роутер, PrivateRoute, PlayerProvider, BottomPlayer
-│       ├── api/                    # тонкі axios-обгортки: auth.ts, song.ts, playlist.ts, user.ts, client.ts
+│       ├── api/                    # axios-обгортки: auth.ts, song.ts, playlist.ts, user.ts, client.ts
 │       ├── pages/                  # 10 сторінок (Feed, Login, Register, Profile, SongDetail, ...)
 │       ├── components/             # Header, SongCard, PlaylistCard, AddToPlaylistDialog, BackButton
 │       ├── player/                 # PlayerContext.tsx (стан плеєра), BottomPlayer.tsx (<audio>)
-│       ├── store/ , features/auth/ # Redux-заготовка, НЕ підключена
-│       ├── tamagui.config.ts       # не використовується
 │       └── index.html              # дубль, не використовується Vite
 │
-└── server/                         # NestJS API
-    ├── env/.env                    # реальні змінні оточення (є в .gitignore за шаблоном .env)
+└── apps/core/                      # Core: NestJS API
+    ├── fixtures/                   # записана відповідь Groq для фейкового провайдера
     ├── nest-cli.json, tsconfig*.json, eslint.config.mjs, .prettierrc
-    ├── dist/                       # зібраний код (артефакт)
     └── src/
-        ├── main.ts                 # bootstrap
+        ├── main.ts                 # bootstrap, pino-логер
         ├── app.initializer.ts      # CORS, глобальні interceptor/filter/pipe, Swagger
-        ├── app.module.ts           # кореневий модуль + LogRequestMiddleware
+        ├── app.module.ts           # кореневий модуль + RequestContextMiddleware
         ├── sequelize-cli/
-        │   ├── config/config.js    # конфіг sequelize-cli (читає ../../../env/.env)
-        │   └── migrations/         # 10 міграцій (20250410132521…530)
+        │   ├── config/config.js    # конфіг sequelize-cli
+        │   └── migrations/         # міграції (схема, транскрипція, лайки, індекси, outbox)
         └── core/
             ├── configuration/      # config.ts (env → typed config), config.type.ts
             ├── shared-kernel/      # спільне ядро
-            │   ├── ports/          # інтерфейси: S3, Crypto, Token, Assembly
-            │   ├── secondary-adapters/  # реалізації: s3/, crypto/, token/, assembly/, postgres/
-            │   ├── rest/           # ApiResponse DTO, interceptor, exception filter, log middleware
+            │   ├── ports/          # інтерфейси: S3, Crypto, Token, Transcription, EventPublisher
+            │   ├── secondary-adapters/  # s3/, crypto/, token/, transcription/, postgres/, rabbitmq/
+            │   ├── events/         # newEvent(): envelope з producer і correlation_id
+            │   ├── request-context/ # AsyncLocalStorage з request id + middleware
+            │   ├── logging/        # nestjs-pino
+            │   ├── rest/           # ApiResponse DTO, interceptor, exception filter
             │   ├── pipe/           # SwitchableValidationPipe, TransformFilePipe
             │   ├── pagination/     # інфраструктура пагінації (НЕ використовується)
             │   ├── decorators/     # @Search (НЕ використовується)
             │   ├── data/           # константи (mockData, пагінація), enum-и (багато — залишки іншого проєкту)
-            │   ├── common/         # formatSongText, formatValidationError (друге не використовується)
+            │   ├── common/         # buildLyrics, formatValidationError (друге не використовується)
             │   └── interfaces/     # UseCase<I,O>
             └── components/         # бізнес-модулі (bounded contexts)
                 ├── auth/           # register/login/logout, AuthGuard, @UserAuth()
                 ├── user/           # профіль, лайкнуті пісні/плейлисти, query/command handlers для auth
                 ├── song/           # пісні, плейлисти, song_to_playlist, listens
-                ├── like/           # лайки пісень і плейлистів (toggle)
+                ├── like/           # лайки пісень і плейлистів (toggle, soft delete)
+                ├── outbox/         # OutboxPort, outbox_events, релей у RabbitMQ
+                ├── health/         # GET /health (terminus)
                 └── comment/        # тільки модель і репозиторій, БЕЗ API
 ```
 
@@ -141,8 +155,8 @@ components/<name>/
 ## 3. Архітектура бекенду
 
 ### Точка входу
-`server/src/main.ts`:
-1. `NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true })`
+`apps/core/src/main.ts`:
+1. `NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true, bufferLogs: true })`, `app.useLogger(nestjs-pino Logger)`
 2. `initApi(app)` — `enableCors()` (усі origin), глобальний `ApiResponseInterceptor`, глобальний `FinalExceptionFilter`, глобальний `SwitchableValidationPipe({ whitelist: true, transform: true })`.
 3. `initDocs(app)` — Swagger UI на `/docs` з Bearer-auth; basic-auth на `/docs`, якщо задано `swagger.username`.
 4. `app.listen(config.node.port)`.
@@ -150,7 +164,7 @@ components/<name>/
 Глобального префікса (`/api`) і версіонування **немає** — ендпоінти висять у корені (`/login`, `/song`, ...).
 
 ### Модулі (`AppModule.imports`)
-`ConfigModule (global)`, `PostgresConnectionModule`, `CryptoModule (global)`, `S3Module`, `UserModule`, `AuthModule`, `CommentModule`, `LikeModule`, `SongModule`. `TokenModule` (global) імпортується з `AuthModule`, `AssemblyModule` (global) — з `SongModule`.
+`ConfigModule (global)`, `LoggerModule` (nestjs-pino), `ScheduleModule`, `PostgresConnectionModule`, `CryptoModule (global)`, `S3Module`, `RabbitMQConnectionModule`, `OutboxModule`, `UserModule`, `AuthModule`, `CommentModule`, `LikeModule`, `SongModule`, `HealthModule`. `TokenModule` (global) імпортується з `AuthModule`, `TranscriptionModule` — з `SongModule`. `OutboxModule` імпортують `AuthModule`, `SongModule`, `LikeModule`.
 
 ### Шари і патерни
 - **Primary adapters** — контролери Nest. Роблять лише маппінг HTTP → use case.
@@ -163,12 +177,14 @@ components/<name>/
   - `DeleteSongUseCase` → `DeleteSongLikesCommand` (модуль like)
   - `CreateSongLikeUseCase` → `GetSongByIdQuery` (модуль song)
   
-  **Важливо для мікросервісів:** шина вже є, але вона синхронна, in-process і використовується лише для query/command. `EventBus`/`@EventsHandler` ніде не використовуються — доменних подій на кшталт `SongLiked`, `SongPlayed` немає.
-- **Транзакції** — вручну через `sequelize.transaction()` у use case'ах (register, login, delete song/playlist) з передачею `Transaction` у команди/репозиторії.
-- **Soft delete** — у всіх таблицях є `deleted_at`; `song`, `playlist`, `user` видаляються м'яко (`smartDelete`), а `like_to_*`, `song_to_playlist`, `listens` — **фізично** (`destroy`).
+  Шина синхронна, in-process і використовується лише для query/command. `EventBus`/`@EventsHandler` свідомо не використовуються: їхні обробники виконуються поза транзакцією use case'а.
+- **Доменні події (transactional outbox)** — use case явно викликає `OutboxPort.add(newEvent(...), { transaction, aggregateType, aggregateId })` у тій самій транзакції, що й зміну даних. `newEvent` (shared-kernel/events) будує envelope з `@platform/contracts`: `producer: 'core'`, `correlation_id` = request id поточного HTTP-запиту (з `AsyncLocalStorage`), `user_id`. Релей `OutboxRelay` (компонент `outbox`) публікує події в RabbitMQ — див. §14.1.
+- **Транзакції** — вручну через `sequelize.transaction()` у use case'ах (register, login, create/delete song, like toggle, add/remove song у плейлисті, listen, delete playlist) з передачею `Transaction` у команди/репозиторії.
+- **Soft delete** — у всіх таблицях є `deleted_at`; `song`, `playlist`, `user`, `like_to_song`, `like_to_playlist` видаляються м'яко, а `song_to_playlist`, `listens` — **фізично** (`destroy`).
 
-### Middleware
-- `LogRequestMiddleware` на `*` — пише в stdout через `Logger('HTTP')`: `ip, дата, метод, URL, статус, content-length, час відповіді (мс)`. Не зберігається нікуди, user id не логується.
+### Middleware і логи
+- **nestjs-pino** — JSON-логи в stdout (рівень `LOG_LEVEL`), pino-http логує кожен запит (`req`, `res.statusCode`, `responseTime`), заголовки `Authorization`/`Cookie` редагуються, `/health` не логується. Логи Nest-сервісів (`Logger`) у межах запиту несуть той самий `req.id`.
+- **Request id** — з заголовка `x-request-id` або згенерований UUID; повертається в заголовку відповіді `x-request-id`. `RequestContextMiddleware` кладе його в `AsyncLocalStorage`, звідки він потрапляє в `correlation_id` подій.
 
 ### Формат відповіді
 `ApiResponseInterceptor` загортає будь-який результат контролера:
@@ -181,6 +197,7 @@ components/<name>/
 `FinalExceptionFilter` (`@Catch()` усього):
 - `HttpException` → статус з винятку, тіло `{ "data": null, "error": <серіалізований HttpException: {response, status, message, name, options}> }`.
 - Будь-яка інша помилка → `InternalServerErrorException(message)` → 500; у `NODE_ENV === 'prod'` для 5xx повертається `error: "Something went wrong"`. 5xx логуються зі стеком.
+- `AuthGuard` на будь-яку проблему з токеном кидає `UnauthorizedException` без деталей → 401.
 - Багато use case'ів кидають **звичайний `Error`** («Playlist not found», «Song already in playlist», «Error creating song») → клієнт отримує **500** замість 400/404.
 - Фронтенд (`handleApiError`) читає `error.response.data.message`, а сервер кладе повідомлення в `error.response.data.error.message` — тобто тексти помилок на фронт фактично не доходять.
 
@@ -204,7 +221,7 @@ components/<name>/
 
 ## 4. Модель даних
 
-PostgreSQL, 10 таблиць з міграцій (`server/src/sequelize-cli/migrations/`). Усі PK — `INTEGER autoIncrement`. `timestamps: false` глобально — `created_at` задається дефолтом `now()`, `updated_at` **немає ніде**.
+PostgreSQL, 11 таблиць з міграцій (`apps/core/src/sequelize-cli/migrations/`). Усі PK — `INTEGER autoIncrement`. `timestamps: false` глобально — `created_at` задається дефолтом `now()`, `updated_at` **немає ніде**.
 
 ### Таблиці
 
@@ -261,16 +278,21 @@ PostgreSQL, 10 таблиць з міграцій (`server/src/sequelize-cli/mig
 
 **`song_to_playlist`** (M:N) — `id, song_id (FK song), playlist_id (FK playlist), created_at, deleted_at`. Позиції/порядку треків **немає**.
 
-**`like_to_song`** (M:N user↔song) — `id, user_id (FK user), song_id (FK song), created_at, deleted_at`.
+**`like_to_song`** (M:N user↔song) — `id, user_id (FK user), song_id (FK song), created_at, deleted_at`. **Один рядок на пару** (`UNIQUE (user_id, song_id)`): анлайк ставить `deleted_at = now()`, повторний лайк знімає його. Активні лайки — `deleted_at IS NULL`; так рахуються «чи лайкнув я» і списки лайкнутого.
 
-**`like_to_playlist`** (M:N user↔playlist) — `id, user_id (FK user), playlist_id (FK playlist), created_at, deleted_at`.
+**`like_to_playlist`** (M:N user↔playlist) — так само, `UNIQUE (user_id, playlist_id)`.
 
 **`subscription`** (підписки user→user) — `id, subscriber_id (FK user), channel_id (FK user), created_at, deleted_at`. **Моделі і коду немає** — лише таблиця.
 
-**`listens`** (журнал прослуховувань) — `id, user_id (FK user), song_id (FK song), created_at, deleted_at`. Модель і репозиторій є, але **жоден код не створює записів** (тільки видаляє при видаленні пісні).
+**`listens`** (журнал прослуховувань) — `id, user_id (FK user), song_id (FK song), created_at, deleted_at`. Кожен `POST /song/:id/listen` додає рядок з `user_id` автентифікованого користувача в одній транзакції з `song.listens = listens + 1`. При видаленні пісні рядки фізично видаляються.
+
+**`outbox_events`** (transactional outbox) — `id UUID PK` (= `event_id`), `event_type`, `aggregate_type`, `aggregate_id`, `payload JSONB` (повний envelope), `occurred_at`, `published_at NULL`, `attempts INT default 0`, `last_error TEXT NULL`. Частковий індекс `(occurred_at) WHERE published_at IS NULL`.
 
 ### Індекси
-Явних індексів **немає**. Є лише ті, що Postgres створює автоматично: PK у кожній таблиці, UNIQUE на `user.username` і `user_auth.email`. FK-колонки (`song.user_id`, `like_to_song.user_id/song_id`, ...) **не проіндексовані**. Унікальності пари `(user_id, song_id)` у лайках немає — захист від дублю лише на рівні коду (перевірка перед вставкою, без транзакції).
+- Автоматичні: PK, UNIQUE на `user.username` і `user_auth.email`.
+- Унікальні: `like_to_song (user_id, song_id)`, `like_to_playlist (user_id, playlist_id)`, `user_auth (user_id)`.
+- На FK: `like_to_song (song_id)`, `like_to_playlist (playlist_id)`, `listens (song_id)`, `listens (user_id, created_at)`, `song (user_id)`, `playlist (user_id)`, `song_to_playlist (playlist_id)`, `song_to_playlist (song_id)`, `comment (song_id)`, `comment (user_id)`, `subscription (subscriber_id)`, `subscription (channel_id)`. `user_id` у лайках покрито унікальними індексами пар.
+- `outbox_events (occurred_at) WHERE published_at IS NULL`.
 
 ### Зв'язки в Sequelize-моделях
 - `User` hasMany `Song` (`songs`), hasMany `Playlist` (`playlists`), belongsToMany `Song` through `LikeToSong` (`liked_songs`), belongsToMany `Playlist` through `LikeToPlaylist` (`liked_playlists`).
@@ -293,7 +315,7 @@ erDiagram
     USER ||--o{ COMMENT : writes
     USER ||--o{ LIKE_TO_SONG : likes
     USER ||--o{ LIKE_TO_PLAYLIST : likes
-    USER ||--o{ LISTENS : "listens (not written)"
+    USER ||--o{ LISTENS : listens
     USER ||--o{ SUBSCRIPTION : "subscriber_id"
     USER ||--o{ SUBSCRIPTION : "channel_id"
     SONG ||--o{ COMMENT : has
@@ -394,7 +416,7 @@ erDiagram
 
 ## 5. API
 
-Базовий URL локально: `http://localhost:<PORT>` (фронт хардкодить `http://localhost:3000`). Усі відповіді загорнуті в `{ data, error }` (§3). «Auth» = заголовок `Authorization: Bearer <access JWT>` + `AuthGuard`. Пагінації немає ніде — списки повертаються повністю.
+Базовий URL локально: `http://localhost:3000` (фронт бере його з `VITE_API_URL`). Усі відповіді загорнуті в `{ data, error }` (§3). «Auth» = заголовок `Authorization: Bearer <access JWT>` + `AuthGuard`. Пагінації немає ніде — списки повертаються повністю.
 
 `is_liked` у відповідях обчислюється окремим запитом `CheckSongLikeQuery`/`CheckPlaylistLikeQuery` **на кожен елемент** (N+1).
 
@@ -415,11 +437,11 @@ erDiagram
 ### Song (`/song`, під AuthGuard)
 | Метод | Шлях | Приймає | Повертає | Сутності |
 |---|---|---|---|---|
-| POST | `/song` | `multipart/form-data`: `name`*, файл `audio`* (без перевірки — відсутність → 500), файл `cover?`; поле `text` у DTO є, але ігнорується | `CreateSongResponse`: `id, name, description, cover_url, user_id, audio, text, listens, created_at, deleted_at` | S3 `song/`, `cover/`; **AssemblyAI (синхронно)**; INSERT `song` |
-| GET | `/song?search=` | `search?` | `{ songs: Song[] }` — **усі** не видалені пісні; `search` лише піднімає збіги за `name ILIKE` нагору (не фільтрує), далі за `created_at DESC` | `song` ⋈ `user`, `like_to_song` |
+| POST | `/song` | `multipart/form-data`: `name`*, файл `audio`* (відсутність → 400), файл `cover?`; поле `text` у DTO є, але ігнорується | `CreateSongResponse`: `id, name, description, cover_url, user_id, audio, text, listens, created_at, deleted_at` | S3 `song/`, `cover/`; **AssemblyAI (синхронно)**; INSERT `song` |
+| GET | `/song?search=` | `search?` | `{ songs: Song[] }` — **усі** не видалені пісні; `search` лише піднімає збіги за `name ILIKE` нагору (не фільтрує), далі за `created_at DESC`. Пошуковий рядок екранується (`%`, `_`, `\` шукаються буквально) і передається як SQL-рядок через `sequelize.escape` | `song` ⋈ `user`, `like_to_song` |
 | GET | `/song/:id` | `id` | Song + `is_liked` + `user{id,username,avatar}` | `song`, `user`, `like_to_song` |
-| POST | `/song/:id/listen` | `id` | `{ status: true }` | UPDATE `song.listens = listens + 1` (read-modify-write, не атомарно). **Хто слухав — не фіксується** |
-| DELETE | `/song/:id` | `id` (тільки автор, інакше 403) | `{ status: true }` | hard DELETE `song_to_playlist`, `listens`, `like_to_song`; soft-delete `song`. Файли в S3 **не видаляються** |
+| POST | `/song/:id/listen` | `id` | `{ status: true }`; **429**, якщо той самий користувач уже слухав цю пісню протягом 30 с (`@nestjs/throttler`, ключ `user_id:song_id`, in-memory) | у транзакції: INSERT `listens (user_id, song_id)` + `UPDATE song SET listens = listens + 1` |
+| DELETE | `/song/:id` | `id` (тільки автор, інакше 403) | `{ status: true }` | hard DELETE `song_to_playlist`, `listens`; soft-delete `like_to_song`, `song`; подія `song.deleted`. Файли в S3 **не видаляються** |
 
 ### Playlist (`/playlist`, під AuthGuard)
 | Метод | Шлях | Приймає | Повертає | Сутності |
@@ -428,23 +450,24 @@ erDiagram
 | POST | `/playlist` | `multipart/form-data`: `title`*, `description?`, `is_private?` ('true'/'1'/'false'/'0'), файл `cover`* (обов'язковий через `TransformFilePipe`) | `CreatePlaylistResponse`: `id, title, description, cover_url, user_id, songs_count: 0, is_private, created_at, deleted_at` | S3 `cover/`; INSERT `playlist` |
 | GET | `/playlist/user/:id` | `id` користувача | `{ playlists: [...] }` — лише публічні плейлисти цього юзера | `playlist` |
 | GET | `/playlist/:id` | `id` | плейлист + `songs[]` (з `is_liked`) + `user` + `is_liked`; приватний видно лише власнику (інакше — `Error` → 500) | `playlist`, `song_to_playlist`, `song`, `user`, лайки |
-| POST | `/playlist/:id/song` | JSON `{ songId: number }` (тільки власник) | `{ status: true }` | INSERT `song_to_playlist` |
+| PATCH | `/playlist/:id` | JSON або `multipart/form-data`: `title?`, `description?`, `is_private?`, файл `cover?` (тільки власник) | `CreatePlaylistResponse` з актуальним `songs_count` | UPDATE `playlist` (лише передані поля); S3 `cover/` |
+| POST | `/playlist/:id/song` | JSON `{ songId: number }` (тільки власник; 409, якщо вже є) | `{ status: true }` | INSERT `song_to_playlist`; подія `playlist.song_added` |
+| DELETE | `/playlist/:id/song/:songId` | (тільки власник; 404, якщо пісні в плейлисті немає) | `{ status: true }` | DELETE `song_to_playlist`; подія `playlist.song_removed` |
 | DELETE | `/playlist/:id` | `id` (тільки власник) | `{ status: true }` | hard DELETE `like_to_playlist`, `song_to_playlist`; soft-delete `playlist` |
 
-Видалення пісні з плейлиста, редагування плейлиста/пісні/профілю — **ендпоінтів немає**.
+Редагування пісні/профілю — **ендпоінтів немає**.
 
 ### Likes
 | Метод | Шлях | Auth | Приймає | Повертає | Сутності |
 |---|---|---|---|---|---|
-| POST | `/song-like` | так | JSON `{ songId: number }` | `{ status: true }` | **toggle**: якщо лайк є — DELETE, якщо нема — INSERT `like_to_song` |
-| POST | `/playlist-like` | так | JSON `{ playlistId: number }` | `{ status: true }` | toggle `like_to_playlist` |
+| POST | `/song-like` | так | JSON `{ songId: number }` | `{ status: true }` | **toggle** у транзакції з `SELECT … FOR UPDATE`: немає рядка — INSERT; активний — `deleted_at = now()`; м'яко видалений — `deleted_at = NULL`. Подія `song.liked` / `song.unliked` |
+| POST | `/playlist-like` | так | JSON `{ playlistId: number }` | `{ status: true }` | те саме для `like_to_playlist` (без подій) |
 
 ### Службове
 | Метод | Шлях | Опис |
 |---|---|---|
-| GET | `/docs` | Swagger UI. Basic-auth вмикається, якщо задано `DOCS_USER` — але в `.env` змінні названі `API_DOCS_USER`/`API_DOCS_PASSWORD`, тож **документація фактично відкрита**. |
-
-Health-check ендпоінта немає (`AppController` порожній).
+| GET | `/docs` | Swagger UI. Basic-auth вмикається, якщо задано `API_DOCS_USER`/`API_DOCS_PASSWORD` (порожні — відкрито). |
+| GET | `/health` | без auth: `@nestjs/terminus`, перевіряє БД (ping) і з'єднання з RabbitMQ; 200 або 503. Healthcheck контейнера Core |
 
 ---
 
@@ -461,9 +484,9 @@ Health-check ендпоінта немає (`AppController` порожній).
   - одночасно активна **лише одна сесія** на користувача (новий логін інвалідовує старий токен);
   - logout реально відкликає токен;
   - кожен запит = +1 SELECT у БД;
-  - без заголовка `Authorization` guard падає з TypeError → **500**, а не 401.
+  - відсутній/некоректний/прострочений токен або відкликана сесія → **401** без деталей.
 - **Refresh-токен** генерується і зберігається, але **ендпоінта оновлення немає** — через 3 години користувача фактично викидає (фронт про це не знає, токен просто стає невалідним).
-- **`@UserAuth()`** повертає рядок `user_auth`, тобто `userAuth.id` — це **id запису user_auth**, а `userAuth.user_id` — id користувача. Код змішує їх (див. §15, баг №1).
+- **`@UserAuth()`** повертає рядок `user_auth`, тобто `userAuth.id` — це **id запису user_auth**, а `userAuth.user_id` — id користувача. Увесь код використовує `userAuth.user_id`.
 - **Ролі:** поле `user.type` (`user`/`admin`) і `is_verified` існують, але **жодних перевірок ролей немає** — адмін-функціоналу не реалізовано.
 - **Фронтенд:** токен, refresh-токен, `user_id`, `username`, `avatar`, `description` зберігаються в `localStorage`; `PrivateRoute` пускає, якщо в `localStorage` є `token` (без перевірки строку).
 
@@ -508,12 +531,12 @@ Health-check ендпоінта немає (`AppController` порожній).
 
 ## 9. Плейлисти, лайки та інші соціальні фічі
 
-- **Плейлисти** (модуль `song`): створення з обкладинкою (обов'язкова), `is_private`; перегляд усіх публічних, публічних конкретного юзера, одного плейлиста з треками; додавання треку (лише власник, без дублів); м'яке видалення. Немає: видалення треку з плейлиста, порядку треків, редагування, колаборативних плейлистів.
-- **Лайки пісень і плейлистів** (модуль `like`): один ендпоінт-перемикач (`POST /song-like`, `POST /playlist-like`). Unlike = фізичний DELETE рядка → **історія лайків/анлайків втрачається**, збереженим лишається тільки поточний стан і `created_at` останнього лайку. Лічильників лайків на пісні немає.
-- **Прослуховування:** `POST /song/:id/listen` → `song.listens++` (див. §11).
+- **Плейлисти** (модуль `song`): створення з обкладинкою (обов'язкова), `is_private`; редагування (`PATCH`); перегляд усіх публічних, публічних конкретного юзера, одного плейлиста з треками; додавання і видалення треку (лише власник, без дублів); м'яке видалення. Немає: порядку треків, колаборативних плейлистів.
+- **Лайки пісень і плейлистів** (модуль `like`): один ендпоінт-перемикач (`POST /song-like`, `POST /playlist-like`). Unlike — м'яке видалення, повторний лайк відновлює той самий рядок; історія переходів зберігається в подіях `song.liked`/`song.unliked`. Лічильників лайків на пісні немає.
+- **Прослуховування:** `POST /song/:id/listen` → рядок у `listens` з `user_id` + атомарний `song.listens + 1`, rate limit 30 с на пару (див. §11).
 - **Коментарі:** таблиця, модель і репозиторій є, **ендпоінтів і UI немає**.
 - **Підписки (follow):** лише таблиця `subscription` в міграції, **без моделі/коду/UI**.
-- **Пошук:** параметр `search` у `GET /song` (лише сортування, SQL-ін'єкція), на фронті не використовується.
+- **Пошук:** параметр `search` у `GET /song` (лише сортування, параметризований), на фронті не використовується.
 - **Стрічка (Feed):** «Discover» = усі пісні (свіжі перші) + усі публічні плейлисти. Жодної персоналізації/рекомендацій.
 
 ---
@@ -581,17 +604,18 @@ Health-check ендпоінта немає (`AppController` порожній).
 ### Є
 | Джерело | Що містить | Якість для аналітики |
 |---|---|---|
-| `like_to_song` | `(user_id, song_id, created_at)` поточних лайків | ✅ явний позитивний фідбек; ❌ анлайк видаляє рядок — немає історії, немає негативного сигналу; ⚠️ `user_id` може бути записаний як `user_auth.id` (баг №1) |
-| `like_to_playlist` | `(user_id, playlist_id, created_at)` | те саме |
+| `like_to_song` | `(user_id, song_id, created_at, deleted_at)` — один рядок на пару | ✅ явний позитивний фідбек; поточний стан = `deleted_at IS NULL`; повна історія — у подіях `song.liked`/`song.unliked` |
+| `like_to_playlist` | `(user_id, playlist_id, created_at, deleted_at)` | те саме, без подій |
 | `song_to_playlist` + `playlist.user_id` | які треки користувач додав у свої плейлисти, коли | ✅ сильний неявний позитивний сигнал; ❌ при видаленні плейлиста рядки фізично видаляються |
 | `song.user_id` | хто що завантажив | контент-атрибут автора |
-| `song.listens` | загальна кількість «дослухано до кінця» по треку | ⚠️ лише агрегат, без user_id і часу; не атомарний інкремент; будь-хто може накрутити ендпоінтом |
+| `listens` | `(user_id, song_id, created_at)` кожного «дослухано до кінця» | ✅ історія прослуховувань на рівні користувача; rate limit 30 с на пару |
+| `song.listens` | загальна кількість «дослухано до кінця» по треку | денормалізований лічильник, атомарний інкремент |
+| події в RabbitMQ (`platform.events`) | `user.registered`, `song.uploaded`, `song.deleted`, `song.liked`, `song.unliked`, `playlist.song_added`, `playlist.song_removed` з `user_id`, `occurred_at`, `correlation_id` | ✅ потік для майбутніх Analytics/Recommendations; копія — у `outbox_events` (опубліковані зберігаються 7 днів) |
 | `song.text` | транскрипт | контентна ознака для content-based рекомендацій / NLP (тематика, настрій, мова) |
 | `user_auth.token` оновлюється при логіні | непрямо — останній логін (без timestamp) | ❌ майже нічого |
-| stdout-логи `LogRequestMiddleware` | IP, метод, URL, статус, час | ❌ не персистяться, немає user id |
+| JSON-логи Core (pino) | запити з `req.id`, статусом і часом | ❌ не персистяться; корисні для трасування подій за `correlation_id` |
 
 ### Чого немає (чесно)
-- **Журналу прослуховувань на рівні користувача** — таблиця `listens` існує, але в неї ніхто не пише.
 - Подій **play, pause, seek, skip, progress, повторне прослуховування, частка дослуханого, тривалість сесії**.
 - **Негативних сигналів** (skip у перші N секунд, unlike, dislike, приховування).
 - **Контексту** відтворення (з якої сторінки/плейлиста/рекомендації запущено, позиція в черзі).
@@ -599,7 +623,7 @@ Health-check ендпоінта немає (`AppController` порожній).
 - Пошукових запитів (пошук не використовується фронтом).
 - Переглядів сторінок пісні/профілю/плейлиста (impressions).
 - Коментарів і підписок (є лише таблиці).
-- Будь-якої аналітичної інфраструктури: event bus, черги, data warehouse, трекінгу на фронті.
+- Аналітичної інфраструктури: споживачів подій, data warehouse, трекінгу на фронті (брокер і outbox уже є).
 - Метаданих треку для content-based підходу (жанр, тривалість, аудіофічі) — є тільки назва і транскрипт.
 
 ---
@@ -648,12 +672,10 @@ npm run dev                # Vite на http://localhost:5000
 
 ## 13. Тести
 
-**Тестів немає.** Жодного `*.spec.ts` / `*.test.*` ні в `server/`, ні в `client/`.
-- Сервер: Jest сконфігурований у `package.json` (`rootDir: src`, `testRegex: .*\.spec\.ts$`, `ts-jest`), встановлені `@nestjs/testing`, `supertest`, але npm-скриптів `test*` немає; запуск можливий лише як `npx jest`.
+- Core: Jest (`apps/core/package.json`: `rootDir: src`, `*.spec.ts`, `ts-jest`, `moduleNameMapper` для `src/*`). Запуск: `npm test` з кореня (спершу збирає contracts) або `docker compose exec core npm test`.
+- Є unit-тести релею outbox з замоканими сховищем і паблішером (`components/outbox/**/*.spec.ts`): успішна публікація позначає запис; помилка збільшує `attempts` і не позначає; батч обробляється в порядку `occurred_at` і зупиняється на першій помилці; цикли не перекриваються; помилка циклу не валить процес; вибірка `FOR UPDATE SKIP LOCKED` від найстаріших.
 - Клієнт: тестового фреймворку не встановлено.
-- Лінтери: ESLint 9 + Prettier (сервер), ESLint 9 (клієнт).
-
-Позитив для майбутніх тестів: use case'и залежать від портів (інтерфейсів із Symbol-токенами), тож репозиторії/S3/AssemblyAI легко мокати.
+- Лінтери: ESLint 9 + Prettier (Core), ESLint 9 (клієнт).
 
 ---
 
@@ -661,8 +683,16 @@ npm run dev                # Vite на http://localhost:5000
 
 Мета: моноліт залишається джерелом правди для користувачів/контенту, нові сервіси — **Analytics/Event Collector**, **User Preference Profile**, **AI Recommendations** (+ за бажанням винесення транскрипції в окремий AI-воркер).
 
-### 14.1 Бекенд: де генерувати доменні події
-Зараз у `@nestjs/cqrs` вже є `EventBus` — найдешевший шлях: публікувати події в use case'ах, а окремий `EventsHandler`/outbox-релей пересилає їх у брокер (Kafka/RabbitMQ/NATS/Redis Streams) для мікросервісів.
+### 14.1 Бекенд: доменні події (реалізовано на етапі 2)
+Події пишуться в `outbox_events` у транзакції use case'а (`OutboxPort.add`) і публікуються `OutboxRelay` у RabbitMQ:
+- exchange `platform.events` (topic, durable), routing key = тип події; `platform.dlx` (topic, durable) — для dead-letter черг споживачів;
+- повідомлення persistent, `content-type: application/json`, `message_id` = `event_id`, `type` = тип події, заголовок `correlation_id`;
+- publisher confirms: `amqp-connection-manager` (під golevelup) відкриває confirm-канал, `publish()` резолвиться лише після ack брокера; якщо з'єднання немає — адаптер одразу кидає помилку, непідтверджена публікація відпадає за таймаутом (`RABBITMQ_PUBLISH_TIMEOUT_MS`);
+- релей: інтервал і батч з конфігу (1000 мс / 100), одна транзакція на цикл, `FOR UPDATE SKIP LOCKED`, від найстаріших; помилка → `attempts + 1`, `last_error`, решта батчу чекає наступного циклу; щоденне очищення опублікованих старших за 7 днів. Доставка at-least-once.
+
+Реалізовані події: `user.registered` (register), `song.uploaded` (create song, `audio_key` = ключ у MinIO), `song.deleted`, `song.liked`/`song.unliked` (like toggle, включно з відновленням), `playlist.song_added`, `playlist.song_removed`. Контракти — `packages/contracts`.
+
+Кандидати на наступні етапи (ще не реалізовані):
 
 | Подія | Місце в коді (use case) | Дані, доступні на цьому місці |
 |---|---|---|
@@ -677,7 +707,6 @@ npm run dev                # Vite на http://localhost:5000
 | `SongListenCompleted` | `.../song/application/usecase/create-listen-for-song.usecase.ts` + **треба додати `userId`** у контролер `song.controller.ts` (`createListenForSong` зараз не бере `@UserAuth()`) | |
 | `SongViewed` / `ProfileViewed` / `PlaylistViewed` | `get-song-by-id.usecase.ts`, `get-user-by-id.usecase.ts`, `get-playlist-by-id.usecase.ts` | impressions |
 
-Для надійності доставки варто розглянути **transactional outbox** (таблиця `outbox` у тій самій Postgres, запис у тій же транзакції, що й бізнес-дані), бо use case'и вже керують транзакціями вручну.
 
 ### 14.2 Бекенд: новий ендпоінт/шлюз для подій плеєра
 Події плеєра (play/pause/seek/skip/progress) бекенд зараз не бачить. Варіанти:
@@ -709,10 +738,10 @@ npm run dev                # Vite на http://localhost:5000
 - Батчинг + `navigator.sendBeacon` на `visibilitychange`/`pagehide`, щоб не губити події при закритті вкладки.
 
 ### 14.7 Що заважає/варто поправити перед виносом у мікросервіси
-- Баг `userAuth.id` vs `userAuth.user_id` (інакше аналітика отримає неправильні user id).
-- Фізичне видалення лайків → перейти на події або soft-delete, щоб зберігати історію.
-- Відсутність Docker/compose — для мікросервісної архітектури знадобиться спільне локальне оточення (Postgres, брокер, сервіси).
-- Відсутність health-check, структурованих логів, кореляційних id.
+- ✅ Баг `userAuth.id` vs `userAuth.user_id`.
+- ✅ Фізичне видалення лайків → soft delete + події.
+- ✅ Docker Compose зі спільним оточенням (Postgres, MinIO, RabbitMQ, Core, клієнт).
+- ✅ Health check, структуровані логи, кореляційні id.
 - Stateful JWT (lookup у БД) ускладнює автентифікацію в інших сервісах.
 
 ---
@@ -720,34 +749,34 @@ npm run dev                # Vite на http://localhost:5000
 ## 15. Зведення відомих проблем і технічного боргу
 
 **Коректність**
-1. **`user_auth.id` замість `user.id`.** `@UserAuth()` повертає рядок `user_auth`. `SongLikeController`, `PlaylistLikeController`, `GET /user/liked-songs`, `GET /user/liked-playlists` використовують `userAuth.id`, а решта коду — `userAuth.user_id`. Працює лише доки id в обох таблицях збігаються (при послідовній реєстрації так і є, але це не гарантовано).
+1. ✅ (виправлено) **`user_auth.id` замість `user.id`.** `@UserAuth()` повертає рядок `user_auth`. `SongLikeController`, `PlaylistLikeController`, `GET /user/liked-songs`, `GET /user/liked-playlists` використовують `userAuth.id`, а решта коду — `userAuth.user_id`. Працює лише доки id в обох таблицях збігаються (при послідовній реєстрації так і є, але це не гарантовано).
 2. `GetUsersLikedSongsUseCase` перевіряє `is_liked` для `song.user_id` (автора), а не для поточного користувача.
 3. `GetPlaylistsByUserIdUseCase` рахує `is_liked` для власника плейлистів, а не для того, хто дивиться.
 4. Розбіжності міграцій і моделей: `playlist.owner_id` vs `user_id`; `song.description NOT NULL` vs запис `null`; `user.type` STRING vs ENUM.
-5. `AuthGuard` без заголовка `Authorization` → 500 замість 401.
-6. `POST /song` без файлу `audio` → TypeError → 500.
+5. ✅ (виправлено) `AuthGuard` без заголовка `Authorization` → 500 замість 401.
+6. ✅ (виправлено) `POST /song` без файлу `audio` → TypeError → 500.
 7. Звичайні `Error` у use case'ах → 500 замість 4xx.
-8. `song.listens + 1` — read-modify-write, гонки при паралельних запитах.
+8. ✅ (виправлено) `song.listens + 1` — read-modify-write, гонки при паралельних запитах.
 9. Помилка/порожній результат AssemblyAI ламає створення пісні; файли в S3 лишаються сиротами.
 10. Лайк у `BottomPlayer` не оновлює стан іконки.
 11. Змінні `API_DOCS_*` не збігаються з очікуваними `DOCS_*` → Swagger без захисту.
 
 **Безпека**
-- **SQL-ін'єкція**: `search` вставляється в `Sequelize.literal` без екранування (`song.repository.adapter.ts`, `getAll`).
+- ✅ (виправлено) **SQL-ін'єкція**: `search` вставлявся в `Sequelize.literal` без екранування.
 - Підключення до БД з `ssl.rejectUnauthorized: false` (`config.ts`, `sequelize-cli/config/config.js`) — TLS є, але сертифікат сервера не перевіряється (вразливо до MITM).
 - Усі медіа — `public-read` у S3, без контролю доступу.
-- CORS `*`; немає rate limiting; немає лімітів розміру файлів.
-- `POST /song/:id/listen` можна накручувати без обмежень.
+- CORS `*`; rate limiting лише на `POST /song/:id/listen`; немає лімітів розміру файлів.
+- ✅ (виправлено) `POST /song/:id/listen` можна накручувати без обмежень.
 - Токени в `localStorage`.
 
 **Продуктивність**
 - N+1: `is_liked` рахується окремим запитом для кожного елемента списку.
 - Немає пагінації (інфраструктура є, не підключена); `GET /song` і `GET /playlist` повертають усе.
-- Немає індексів на FK-колонках.
+- ✅ (виправлено) Немає індексів на FK-колонках.
 - Синхронна транскрипція блокує запит.
 - Файли повністю буферизуються в RAM.
 
 **Мертвий код / залишки**
 - enum-и з іншого проєкту (`BenefitType`, `MerchantSize`, `WebshopColors`, `OrganisationType`, ...), `FileObjectName.logo`.
-- Невикористані: pagination, `@Search`, `formatValidationError`, `DisableAutoValidation`, `S3Service.deleteFileByUrl`, `CommentModule`, `ListensRepository.create`, Redux store/authSlice, React Query, Tamagui, `api/client.ts`, `playPrev`, passport/bcrypt/joi/uuid/@nestjs/schedule.
+- Невикористані: pagination, `@Search`, `formatValidationError`, `DisableAutoValidation`, `S3Service.deleteFileByUrl`, `CommentModule`, React Query, `playPrev`. (Redux, Tamagui, passport/bcrypt/joi/uuid видалено на етапі 2.)
 - README обох частин — дефолтні шаблони.
