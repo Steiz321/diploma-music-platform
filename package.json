@@ -10,7 +10,7 @@
     "build:contracts": "npm run build -w @platform/contracts",
     "dev:core": "npm run build:contracts && npm run start:dev -w @platform/core",
     "dev:client": "npm run dev -w @platform/client",
-    "test": "npm test --workspaces --if-present",
+    "test": "npm run build:contracts && npm test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   }
 }
