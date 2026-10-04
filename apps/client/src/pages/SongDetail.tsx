@@ -15,6 +15,8 @@ import {
   DialogActions,
   Button,
   Alert,
+  Chip,
+  CircularProgress,
 } from "@mui/material";
 import {
   PlayArrow,
@@ -30,6 +32,11 @@ import songApi, { Song } from "../api/song";
 import { usePlayer } from "../player/PlayerContext";
 import BackButton from "../components/BackButton";
 import AddToPlaylistDialog from "../components/AddToPlaylistDialog";
+
+const LYRICS_POLL_INTERVAL_MS = 5000;
+
+const formatTag = (tag: string) =>
+  (tag.charAt(0).toUpperCase() + tag.slice(1)).replace(/_/g, " ");
 
 const SongDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -63,6 +70,34 @@ const SongDetail: React.FC = () => {
 
     fetchSong();
   }, [id]);
+
+  // lyrics and tags arrive asynchronously from the AI enrichment service
+  const isProcessing = song?.transcription_status === "pending";
+  useEffect(() => {
+    if (!id || !isProcessing) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const data = await songApi.getSongById(parseInt(id));
+        if (data.transcription_status !== "pending") {
+          setSong((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  text: data.text,
+                  tags: data.tags,
+                  transcription_status: data.transcription_status,
+                }
+              : data
+          );
+        }
+      } catch (err) {
+        console.error("Error refreshing song:", err);
+      }
+    }, LYRICS_POLL_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+  }, [id, isProcessing]);
 
   if (loading) {
     return (
@@ -242,7 +277,42 @@ const SongDetail: React.FC = () => {
 
                 <Divider sx={{ my: 2 }} />
 
-                {/* Song Description */}
+                {/* Tags from the lyrics analysis */}
+                {song.tags && (
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 2 }}>
+                    {[...song.tags.mood, ...song.tags.topics].map((tag) => (
+                      <Chip key={tag} label={formatTag(tag)} size="small" />
+                    ))}
+                    <Chip
+                      label={`${formatTag(song.tags.energy)} energy`}
+                      size="small"
+                      variant="outlined"
+                    />
+                  </Box>
+                )}
+
+                {isProcessing && (
+                  <Box
+                    sx={{ display: "flex", alignItems: "center", gap: 1, mb: 3 }}
+                  >
+                    <CircularProgress size={16} />
+                    <Typography variant="body2" color="text.secondary">
+                      Lyrics are being processed…
+                    </Typography>
+                  </Box>
+                )}
+                {song.transcription_status === "no_lyrics" && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Instrumental — no lyrics
+                  </Typography>
+                )}
+                {song.transcription_status === "failed" && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Lyrics are not available
+                  </Typography>
+                )}
+
+                {/* Lyrics */}
                 {song.text && (
                   <Typography
                     variant="body1"

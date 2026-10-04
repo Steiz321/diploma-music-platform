@@ -1,22 +1,18 @@
-import {ConfigService} from '@nestjs/config';
-import {SequelizeModuleOptions} from '@nestjs/sequelize';
-import {join} from 'path';
+import { ConfigService } from '@nestjs/config';
+import { SequelizeModuleOptions } from '@nestjs/sequelize';
 
 const defaultConfig = (
-  configService: ConfigService
+  configService: ConfigService,
 ): SequelizeModuleOptions => {
   const sequelizeParams = configService.get('db');
 
   return {
     ...sequelizeParams,
-    synchronize: true,
-    models: [
-      join(
-        __dirname,
-        '../../../',
-        'components/**/secondary-adapters/postgres/data/*.model{.ts,.js}'
-      )
-    ]
+    // every model registered with SequelizeModule.forFeature is added to the
+    // connection, including the outbox/inbox models of @platform/messaging
+    autoLoadModels: true,
+    // the schema comes only from migrations
+    synchronize: false,
   };
 };
 

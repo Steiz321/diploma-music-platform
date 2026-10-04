@@ -13,6 +13,9 @@ export type SongUpdateParams = Partial<
     | 'transcription'
     | 'transcription_status'
     | 'language'
+    | 'lyrics'
+    | 'tags'
+    | 'vocabulary_version'
     | 'deleted_at'
   >
 >;

@@ -21,10 +21,7 @@ import {
 import { StatusResponse } from 'src/core/shared-kernel/rest/dto/status-response.dto';
 import { Sequelize } from 'sequelize-typescript';
 import { EVENT_TYPES } from '@platform/contracts';
-import {
-  OutboxPort,
-  OutboxPortType,
-} from 'src/core/components/outbox/ports/outbox.port';
+import { OutboxPort, OutboxPortType } from '@platform/messaging';
 import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface AddSongToPlaylistArguments {

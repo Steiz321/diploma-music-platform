@@ -20,7 +20,6 @@ import CreateSongUseCase from './application/usecase/create-song.usecase';
 import GetAllSongsUseCase from './application/usecase/get-all-songs.usecase';
 import GetSongByIdUseCase from './application/usecase/get-song-by-id.usecase';
 import { S3Module } from 'src/core/shared-kernel/secondary-adapters/s3/s3.module';
-import { TranscriptionModule } from 'src/core/shared-kernel/secondary-adapters/transcription/transcription.module';
 import { GetSongByIdHandler } from './application/query-handler/get-song-by-id/get-song-by-id.handler';
 import { PlaylistController } from './primary-adapters/playlist.controller';
 import CreatePlaylistUseCase from './application/usecase/create-playlist.usecase';
@@ -32,6 +31,8 @@ import { GetPlaylistByIdQueryHandler } from './application/query-handler/get-pla
 import CreateListenForSongUseCase from './application/usecase/create-listen-for-song.usecase';
 import DeleteSongUseCase from './application/usecase/delete-song.usecase';
 import DeletePlaylistUseCase from './application/usecase/delete-playlist.usecase';
+import ApplySongEnrichmentUseCase from './application/usecase/apply-song-enrichment.usecase';
+import { SongEnrichmentConsumer } from './primary-adapters/song-enrichment.consumer';
 import UpdatePlaylistUseCase from './application/usecase/update-playlist.usecase';
 import RemoveSongFromPlaylistUseCase from './application/usecase/remove-song-from-playlist.usecase';
 
@@ -55,12 +56,11 @@ const UseCases = [
   DeletePlaylistUseCase,
   UpdatePlaylistUseCase,
   RemoveSongFromPlaylistUseCase,
+  ApplySongEnrichmentUseCase,
 ];
-import { OutboxModule } from 'src/core/components/outbox/outbox.module';
 
 @Module({
   imports: [
-    OutboxModule,
     CqrsModule,
     SequelizeModule.forFeature([
       SongModel,
@@ -69,7 +69,6 @@ import { OutboxModule } from 'src/core/components/outbox/outbox.module';
       SongToPlaylistModel,
     ]),
     S3Module,
-    TranscriptionModule,
     // POST /song/:id/listen: one counted listen per user–song pair per 30 s
     ThrottlerModule.forRoot([{ name: 'listen', ttl: 30_000, limit: 1 }]),
   ],
@@ -93,6 +92,7 @@ import { OutboxModule } from 'src/core/components/outbox/outbox.module';
     ...CommandHandlers,
     ...QueryHandlers,
     ...UseCases,
+    SongEnrichmentConsumer,
   ],
   controllers: [SongController, PlaylistController],
 })

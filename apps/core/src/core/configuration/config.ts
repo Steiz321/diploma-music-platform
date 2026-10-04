@@ -1,4 +1,4 @@
-import Configuration, { TranscriptionProvider } from './config.type';
+import Configuration from './config.type';
 import { loadEnv } from './load-env';
 
 loadEnv();
@@ -47,12 +47,6 @@ const configure = async (): Promise<Configuration> => {
       secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
       bucket: process.env.S3_BUCKET,
       publicBaseUrl: process.env.PUBLIC_FILES_BASE_URL?.replace(/\/+$/, ''),
-    },
-    transcription: {
-      provider: (process.env.TRANSCRIPTION_PROVIDER ||
-        'fake') as TranscriptionProvider,
-      groqApiKey: process.env.GROQ_API_KEY,
-      fakeDelayMs: Number(process.env.FAKE_TRANSCRIPTION_DELAY_MS) || 0,
     },
     rabbitmq: {
       uri: process.env.RABBITMQ_URL,

@@ -21,10 +21,7 @@ import {
 } from 'src/core/shared-kernel/ports/s3-service.interface';
 import { FileObjectName } from 'src/core/shared-kernel/secondary-adapters/s3/data/enum/file-object-name.enum';
 import { EVENT_TYPES } from '@platform/contracts';
-import {
-  OutboxPort,
-  OutboxPortType,
-} from 'src/core/components/outbox/ports/outbox.port';
+import { OutboxPort, OutboxPortType } from '@platform/messaging';
 import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface RegisterArguments {

@@ -16,7 +16,11 @@ import ListensModel from './listens.model';
 import LikeToSongModel from '../../../../like/secondary-adapters/postgres/data/like-to-song.model';
 import UserModel from 'src/core/components/user/secondary-adapters/postgres/data/user.model';
 import { TranscriptionStatus } from 'src/core/shared-kernel/data/enum/transcription-status.enum';
-import { TranscriptionResult } from 'src/core/shared-kernel/ports/transcription-service.interface';
+import {
+  SongTags,
+  StructuredLyrics,
+  TranscriptionResult,
+} from '@platform/contracts';
 
 @Table({ tableName: 'song' })
 export default class SongModel extends Model<SongModel> {
@@ -65,6 +69,20 @@ export default class SongModel extends Model<SongModel> {
   @AllowNull
   @Column
   language: string | null;
+
+  // lyrics split into verses with line timings (song.enriched)
+  @AllowNull
+  @Column(DataType.JSONB)
+  lyrics: StructuredLyrics | null;
+
+  // tags from the fixed vocabulary of @platform/contracts
+  @AllowNull
+  @Column(DataType.JSONB)
+  tags: SongTags | null;
+
+  @AllowNull
+  @Column(DataType.INTEGER)
+  vocabulary_version: number | null;
 
   @Default(DataType.NOW)
   @Column

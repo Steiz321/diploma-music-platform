@@ -13,10 +13,7 @@ import { LikeToSongRepository } from '../../ports/like-to-song.repository';
 import { QueryBus } from '@nestjs/cqrs';
 import { GetSongByIdQuery } from 'src/core/components/song/application/query-handler/get-song-by-id/get-song-by-id.query';
 import { EVENT_TYPES } from '@platform/contracts';
-import {
-  OutboxPort,
-  OutboxPortType,
-} from 'src/core/components/outbox/ports/outbox.port';
+import { OutboxPort, OutboxPortType } from '@platform/messaging';
 import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface CreateSongLikeArgument {

@@ -25,14 +25,6 @@ export interface S3Config {
   publicBaseUrl: string;
 }
 
-export type TranscriptionProvider = 'groq' | 'fake';
-
-export interface TranscriptionConfig {
-  provider: TranscriptionProvider;
-  groqApiKey?: string;
-  fakeDelayMs: number;
-}
-
 export interface RabbitMQConfig {
   // amqp://user:password@host:5672
   uri: string;
@@ -54,7 +46,6 @@ export default interface Configuration {
   db: SequelizeModuleOptions;
   swagger: SwaggerConfig;
   s3: S3Config;
-  transcription: TranscriptionConfig;
   rabbitmq: RabbitMQConfig;
   outbox: OutboxConfig;
 }

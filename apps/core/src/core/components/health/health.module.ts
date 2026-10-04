@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TerminusModule } from '@nestjs/terminus';
-import { RabbitMQConnectionModule } from 'src/core/shared-kernel/secondary-adapters/rabbitmq/rabbitmq.module';
+import { RabbitMQHealthIndicator } from '@platform/messaging/health';
 import { HealthController } from './primary-adapters/health.controller';
-import { RabbitMQHealthIndicator } from './application/rabbitmq.health';
 
 @Module({
-  imports: [TerminusModule, RabbitMQConnectionModule],
+  imports: [TerminusModule],
   providers: [RabbitMQHealthIndicator],
   controllers: [HealthController],
 })

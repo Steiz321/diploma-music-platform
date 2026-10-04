@@ -6,6 +6,16 @@ interface User {
   avatar: string | null;
 }
 
+// set by the AI enrichment service (song.enriched)
+export type TranscriptionStatus = "pending" | "done" | "no_lyrics" | "failed";
+
+export interface SongTags {
+  mood: string[];
+  topics: string[];
+  energy: string;
+  language: string;
+}
+
 export interface Song {
   id: number;
   name: string;
@@ -16,6 +26,8 @@ export interface Song {
   is_liked: boolean;
   cover_url: string;
   listens: number;
+  transcription_status?: TranscriptionStatus;
+  tags?: SongTags | null;
   created_at: Date;
   updated_at: Date;
   user: User;

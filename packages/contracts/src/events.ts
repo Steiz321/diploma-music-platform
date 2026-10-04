@@ -1,4 +1,7 @@
 import { EventEnvelope } from './envelope';
+import { StructuredLyrics } from './lyrics';
+import { SongTags } from './tags';
+import { TranscriptionResult } from './transcription';
 
 export const EVENT_TYPES = {
   userRegistered: 'user.registered',
@@ -8,6 +11,8 @@ export const EVENT_TYPES = {
   songUnliked: 'song.unliked',
   playlistSongAdded: 'playlist.song_added',
   playlistSongRemoved: 'playlist.song_removed',
+  songEnriched: 'song.enriched',
+  songEnrichmentFailed: 'song.enrichment_failed',
 } as const;
 
 export type EventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
@@ -44,6 +49,33 @@ export interface PlaylistSongAddedPayload {
 
 export type PlaylistSongRemovedPayload = PlaylistSongAddedPayload;
 
+export interface SongEnrichedPayload {
+  song_id: number;
+  /** no_lyrics: instrumental or nothing intelligible was transcribed */
+  status: 'done' | 'no_lyrics';
+  transcription: TranscriptionResult;
+  /** plain lyrics, an empty line between verses; null for no_lyrics */
+  text: string | null;
+  /** null for no_lyrics or when the analysis failed */
+  lyrics: StructuredLyrics | null;
+  /** null for no_lyrics or when the analysis failed */
+  tags: SongTags | null;
+  vocabulary_version: number;
+  models: {
+    transcription: string;
+    /** null when the LLM was not called */
+    llm: string | null;
+  };
+}
+
+/** Sent only when there is no transcription at all. */
+export interface SongEnrichmentFailedPayload {
+  song_id: number;
+  stage: 'download' | 'transcription';
+  reason: string;
+  attempts: number;
+}
+
 /** payload type of every event type */
 export interface EventPayloadMap {
   'user.registered': UserRegisteredPayload;
@@ -53,6 +85,8 @@ export interface EventPayloadMap {
   'song.unliked': SongUnlikedPayload;
   'playlist.song_added': PlaylistSongAddedPayload;
   'playlist.song_removed': PlaylistSongRemovedPayload;
+  'song.enriched': SongEnrichedPayload;
+  'song.enrichment_failed': SongEnrichmentFailedPayload;
 }
 
 /** envelope of a known event type, e.g. PlatformEvent<'song.liked'> */

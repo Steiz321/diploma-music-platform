@@ -13,18 +13,9 @@ import {
 } from 'src/core/shared-kernel/ports/s3-service.interface';
 import { Song } from '../data/song.dto';
 import { mockData } from 'src/core/shared-kernel/data/constants/mock-data.constant';
-import {
-  TranscriptionServiceInterface,
-  TranscriptionServiceInterfaceType,
-} from 'src/core/shared-kernel/ports/transcription-service.interface';
-import { buildLyrics } from 'src/core/shared-kernel/common/build-lyrics.util';
-import { TranscriptionStatus } from 'src/core/shared-kernel/data/enum/transcription-status.enum';
 import { EVENT_TYPES } from '@platform/contracts';
 import { Sequelize } from 'sequelize-typescript';
-import {
-  OutboxPort,
-  OutboxPortType,
-} from 'src/core/components/outbox/ports/outbox.port';
+import { OutboxPort, OutboxPortType } from '@platform/messaging';
 import { newEvent } from 'src/core/shared-kernel/events/new-event';
 
 interface CreateSongArguments {
@@ -45,8 +36,6 @@ export default class CreateSongUseCase
     private readonly songRepository: SongRepository,
     @Inject(S3ServiceInterfaceType)
     private readonly s3Service: S3ServiceInterface,
-    @Inject(TranscriptionServiceInterfaceType)
-    private readonly transcriptionService: TranscriptionServiceInterface,
     @Inject(OutboxPortType)
     private readonly outbox: OutboxPort,
     private readonly sequelize: Sequelize,
@@ -88,8 +77,9 @@ export default class CreateSongUseCase
         ).url;
       }
 
-      // saved first with transcription_status = pending; the song and its
-      // song.uploaded event are committed together
+      // saved with transcription_status = pending; the song and its
+      // song.uploaded event are committed together. The AI enrichment
+      // service transcribes and analyses it asynchronously (song.enriched).
       song = await this.sequelize.transaction(async (t) => {
         const created = await this.songRepository.create(
           {
@@ -124,8 +114,6 @@ export default class CreateSongUseCase
       throw new Error('Error creating song');
     }
 
-    song = await this.transcribe(song, audioKey);
-
     return {
       id: song.id,
       name: song.name,
@@ -140,45 +128,5 @@ export default class CreateSongUseCase
       created_at: song.created_at,
       deleted_at: song.deleted_at,
     };
-  }
-
-  // Transcription failures never fail the upload: the song keeps
-  // transcription_status = failed and the reason is logged.
-  private async transcribe(song: Song, audioKey: string): Promise<Song> {
-    try {
-      const transcription =
-        await this.transcriptionService.transcribe(audioKey);
-      const text = buildLyrics(transcription.segments);
-
-      return await this.songRepository.update(
-        {
-          transcription,
-          transcription_status: text
-            ? TranscriptionStatus.done
-            : TranscriptionStatus.no_lyrics,
-          language: transcription.language,
-          text: text || null,
-        },
-        { id: song.id },
-      );
-    } catch (err) {
-      this.logger.error(
-        `Transcription failed for song ${song.id} (${audioKey}): ${err.message}`,
-        err.stack,
-      );
-
-      try {
-        return await this.songRepository.update(
-          { transcription_status: TranscriptionStatus.failed },
-          { id: song.id },
-        );
-      } catch (updateErr) {
-        this.logger.error(
-          `Could not mark song ${song.id} as failed: ${updateErr.message}`,
-          updateErr.stack,
-        );
-        return song;
-      }
-    }
   }
 }

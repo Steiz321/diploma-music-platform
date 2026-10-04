@@ -8,6 +8,7 @@
 import { join } from 'path';
 import { Sequelize } from 'sequelize-typescript';
 import { ModelAttributeColumnOptions } from 'sequelize';
+import { MESSAGING_MODELS } from '@platform/messaging';
 import appConfig from '../src/core/configuration/config';
 
 // Tables created by migrations that intentionally have no model yet
@@ -63,6 +64,8 @@ async function main() {
       ),
     ],
   } as any);
+  // outbox / inbox models live in the shared messaging package
+  sequelize.addModels(MESSAGING_MODELS);
 
   const errors: string[] = [];
   const queryInterface = sequelize.getQueryInterface();

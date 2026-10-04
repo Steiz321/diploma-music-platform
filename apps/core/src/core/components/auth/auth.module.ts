@@ -17,10 +17,9 @@ const useCases = [
   LogoutUseCase,
   RegisterUseCase,
 ];
-import { OutboxModule } from 'src/core/components/outbox/outbox.module';
 
 @Module({
-  imports: [OutboxModule, CqrsModule, S3Module, TokenModule],
+  imports: [CqrsModule, S3Module, TokenModule],
   providers: [AuthGuard, ...useCases],
   controllers: [AuthController],
   exports: [AuthGuard, GetEncryptedPasswordUseCase, VerifyUserPasswordUseCase],

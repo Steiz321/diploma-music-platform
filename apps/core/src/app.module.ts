@@ -1,21 +1,25 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AppController } from './app.controller';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import {
+  LoggerModule,
+  MessagingModule,
+  RequestContextMiddleware,
+} from '@platform/messaging';
 import config from './core/configuration/config';
+import { OutboxConfig, RabbitMQConfig } from './core/configuration/config.type';
+import { PRODUCER } from './core/shared-kernel/events/producer.constant';
 import { PostgresConnectionModule } from './core/shared-kernel/secondary-adapters/postgres/postgres-connection.module';
 import { CryptoModule } from './core/shared-kernel/secondary-adapters/crypto/crypto.module';
 import { S3Module } from './core/shared-kernel/secondary-adapters/s3/s3.module';
-import { RabbitMQConnectionModule } from './core/shared-kernel/secondary-adapters/rabbitmq/rabbitmq.module';
 import { UserModule } from './core/components/user/user.module';
 import { AuthModule } from './core/components/auth/auth.module';
 import { CommentModule } from './core/components/comment/comment.module';
 import { LikeModule } from './core/components/like/like.module';
 import { SongModule } from './core/components/song/song.module';
-import { OutboxModule } from './core/components/outbox/outbox.module';
+import { SONG_ENRICHMENT_QUEUE } from './core/components/song/primary-adapters/song-enrichment.consumer';
 import { HealthModule } from './core/components/health/health.module';
-import { LoggerModule } from './core/shared-kernel/logging/logger.module';
-import { RequestContextMiddleware } from './core/shared-kernel/request-context/request-context.middleware';
 
 @Module({
   imports: [
@@ -23,13 +27,26 @@ import { RequestContextMiddleware } from './core/shared-kernel/request-context/r
       isGlobal: true,
       load: [config],
     }),
-    LoggerModule,
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        level: configService.get<string>('node.logLevel'),
+      }),
+    }),
     ScheduleModule.forRoot(),
     PostgresConnectionModule,
+    // RabbitMQ, transactional outbox + relay, inbox (global)
+    MessagingModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        producer: PRODUCER,
+        rabbitmq: configService.get<RabbitMQConfig>('rabbitmq'),
+        outbox: configService.get<OutboxConfig>('outbox'),
+        consumerQueues: [SONG_ENRICHMENT_QUEUE],
+      }),
+    }),
     CryptoModule,
     S3Module,
-    RabbitMQConnectionModule,
-    OutboxModule,
     UserModule,
     AuthModule,
     CommentModule,

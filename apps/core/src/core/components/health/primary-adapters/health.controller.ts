@@ -5,7 +5,7 @@ import {
   HealthCheckService,
   SequelizeHealthIndicator,
 } from '@nestjs/terminus';
-import { RabbitMQHealthIndicator } from '../application/rabbitmq.health';
+import { RabbitMQHealthIndicator } from '@platform/messaging/health';
 
 @Controller('health')
 @ApiTags('Health')
@@ -18,7 +18,9 @@ export class HealthController {
 
   @Get()
   @HealthCheck()
-  @ApiOperation({ summary: 'Database and RabbitMQ connectivity; 503 when down' })
+  @ApiOperation({
+    summary: 'Database and RabbitMQ connectivity; 503 when down',
+  })
   check() {
     return this.health.check([
       () => this.db.pingCheck('database'),

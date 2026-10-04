@@ -3,19 +3,19 @@
 > Технічний огляд поточного стану репозиторію `diploma/` для обговорення подальшої розробки
 > (магістерська тема: «Побудова мікросервісної архітектури музичної платформи з використанням
 > поведінкової аналітики та ШІ»). Документ описує **лише те, що є в коді**; розбіжності та баги
-> позначені явно. Початковий опис — стан на 2026-09-26; розділи, яких торкнувся етап 2
-> (багфікси, монорепо, RabbitMQ, transactional outbox, логи й health checks), оновлено станом на 2026-10-03.
-> Інфраструктура етапу 1 (Docker Compose, MinIO замість AWS S3, Groq замість AssemblyAI) описана в `README.md`;
-> розділи 7, 8 і 12 цього документа ще описують бакалаврський стан.
+> позначені явно. Початковий опис — стан на 2026-09-26; розділи, яких торкнулися етап 2
+> (багфікси, монорепо, RabbitMQ, transactional outbox, логи й health checks, 2026-10-03) і етап 3
+> (сервіс AI enrichment, 2026-10-04), оновлено. Інфраструктура етапу 1 (Docker Compose, MinIO замість
+> AWS S3) описана в `README.md`; розділ 12 і частина розділу 7 ще описують бакалаврський стан.
 
 ---
 
 ## 0. TL;DR
 
-- **Монорепо на npm workspaces**: `apps/core` (NestJS 11 + Sequelize 6 + PostgreSQL), `apps/client` (React 19 + Vite 6 + MUI 7), `packages/contracts` (`@platform/contracts` — контракти подій). Git, Docker Compose, `.env.example`; CI немає.
+- **Монорепо на npm workspaces**: `apps/core` (NestJS 11 + Sequelize 6 + PostgreSQL), `apps/ai-enrichment` (NestJS, власна БД), `apps/client` (React 19 + Vite 6 + MUI 7), `packages/contracts` (`@platform/contracts` — контракти подій, словник тегів), `packages/messaging` (`@platform/messaging` — RabbitMQ, outbox, inbox, логи). Git, Docker Compose, `.env.example`; CI немає.
 - Core — **модульний моноліт у стилі гексагональної архітектури** (ports & adapters) + CQRS-шина `@nestjs/cqrs` для міжмодульних викликів (query/command handlers). Доменні події пишуться в **transactional outbox** (`outbox_events`) у транзакції use case'а і публікуються релеєм у **RabbitMQ** (topic exchange `platform.events`). `EventBus` з `@nestjs/cqrs` для цього свідомо не використовується.
 - Файли (аудіо, обкладинки, аватари) — **AWS S3, публічні URL**; стрімінг — браузерний `<audio src="https://bucket.s3...">` напряму з S3 (бекенд аудіо не проксує).
-- ШІ-транскрипція — **AssemblyAI** (`speech_model: 'slam-1'`), викликається **синхронно всередині HTTP-запиту створення пісні**; результат — поле `song.text`.
+- ШІ — окремий сервіс **AI enrichment**: за подією `song.uploaded` транскрибує аудіо (Groq Whisper) і аналізує текст (Groq `gpt-oss-120b`: строфи з таймкодами, теги зі словника), результат повертає в Core подією `song.enriched`. `POST /song` на транскрипцію не чекає (див. §8).
 - Поведінкові дані сьогодні: лайки (toggle з **м'яким видаленням**, один рядок на пару), кожне прослуховування на `ended` — рядок у `listens` з `user_id` + атомарний інкремент `song.listens` (rate limit 1 раз на 30 с на пару користувач–пісня), доменні події `song.liked`/`song.unliked`/`playlist.song_added`/... у RabbitMQ. Подій play/pause/seek/skip на бекенд поки не надходить (`POST /events` — наступний етап).
 - Відомі проблеми — §15; виправлені на етапі 2 позначені ✅.
 
@@ -28,10 +28,10 @@
 |---|---|
 | Мова | TypeScript (сервер: TS 5.8, `strictNullChecks: false`, `noImplicitAny: false`; клієнт: TS ~5.7, `strict: true`) |
 | Node.js | версія не зафіксована (`.nvmrc`/`engines` відсутні); локально стоїть v24 |
-| Пакетний менеджер | npm (`package-lock.json` в обох частинах) |
+| Пакетний менеджер | npm workspaces, один `package-lock.json` у корені |
 | БД | PostgreSQL (драйвер `pg` 8.15), підключення з **обов'язковим SSL** (`ssl.require: true, rejectUnauthorized: false`) → по суті розрахована на керовану хмарну БД |
 | Файлове сховище | AWS S3 (`@aws-sdk/client-s3` 3.802) |
-| ШІ | AssemblyAI SDK (`assemblyai` 4.12.2) |
+| ШІ | Groq (`groq-sdk` 1.6) — лише в сервісі AI enrichment: `whisper-large-v3`, `openai/gpt-oss-120b` |
 
 ### Бекенд (`apps/core/package.json`) — встановлені версії
 | Пакет | Версія | Використовується? |
@@ -49,14 +49,14 @@
 | `argon2` | 0.43 | так (хешування паролів) |
 | `tweetnacl` | 1.0.3 | так (SHA-512 + симетричне шифрування хешу пароля) |
 | `@aws-sdk/client-s3` | 3.802 | так |
-| `assemblyai` | 4.12.2 | так |
-| `dotenv` | 16.5 (dev) | так (читання `env/.env`) |
+| `dotenv` | 16.6 | так (необов'язковий `apps/core/.env`) |
 | `@nestjs/schedule` | 6.0 | так (релей outbox, щоденне очищення) |
 | `@golevelup/nestjs-rabbitmq` | 9.1 | так (з'єднання з RabbitMQ, publisher confirms) |
 | `@nestjs/throttler` | 6.7 | так (rate limit `POST /song/:id/listen`) |
 | `nestjs-pino` + `pino`, `pino-http` | 5.3 / 10 / 11 | так (JSON-логи, request id) |
 | `@nestjs/terminus` | 12.1 | так (`GET /health`) |
-| `@platform/contracts` | workspace | так (envelope і типи подій) |
+| `@platform/contracts` | workspace | так (envelope і типи подій, словник тегів) |
+| `@platform/messaging` | workspace | так (MessagingModule: RabbitMQ, outbox і релей, inbox; логер, request context) |
 | `jest`, `ts-jest`, `@nestjs/testing` | — | так (`npm test`, unit-тести релею outbox) |
 
 `passport`, `passport-jwt`, `@nestjs/passport`, `bcrypt`, `joi`, `uuid` видалено на етапі 2 (не використовувалися).
@@ -80,11 +80,23 @@ Redux (`@reduxjs/toolkit`, `react-redux`) і Tamagui видалено на ет�
 ```
 diploma/
 ├── package.json, package-lock.json # npm workspaces: packages/*, apps/*; єдиний lock
-├── docker-compose.yml              # postgres, minio (+init), rabbitmq, core, client
-├── infra/                          # dev-entrypoint, ініціалізація MinIO
+├── docker-compose.yml              # postgres, minio (+init), rabbitmq, core, ai-enrichment, client
+├── infra/                          # dev-entrypoint, ініціалізація MinIO, init-скрипт Postgres (БД ai_enrichment)
 ├── packages/
-│   └── contracts/                  # @platform/contracts: EventEnvelope, EVENT_TYPES, payload-и,
-│                                   # EXCHANGES, createEnvelope; tsc -b → dist/ (CommonJS)
+│   ├── contracts/                  # @platform/contracts: EventEnvelope, EVENT_TYPES, payload-и, EXCHANGES,
+│   │                               # createEnvelope, TAG_VOCABULARY, типи транскрипції й тексту;
+│   │                               # без runtime-залежностей; tsc -b → dist/ (CommonJS)
+│   └── messaging/                  # @platform/messaging: MessagingModule (golevelup RabbitMQ, outbox +
+│                                   # релей, inbox processed_events), SubscribeToEvents (черга + DLQ),
+│                                   # RequestContext / withEventContext, LoggerModule (pino), health
+├── apps/ai-enrichment/             # AI enrichment (див. §8)
+│   ├── fixtures/                   # записана відповідь Groq для фейкового транскрайбера
+│   └── src/
+│       ├── enrichment/             # SongUploadedConsumer, EnrichmentService (пайплайн), song_enrichments
+│       ├── transcription/          # Transcriber: Groq Whisper / fake, ffmpeg-стиснення
+│       ├── analysis/               # Analyzer: Groq LLM / fake, JSON-схема, промпт, валідація відповіді
+│       ├── storage/                # читання аудіо з MinIO
+│       └── sequelize-cli/          # міграції власної БД
 ├── apps/client/                    # SPA на React + Vite
 │   ├── index.html                  # точка входу Vite (title "Vite + React + TS")
 │   ├── vite.config.ts              # порт 5000, host: true
@@ -110,11 +122,9 @@ diploma/
         └── core/
             ├── configuration/      # config.ts (env → typed config), config.type.ts
             ├── shared-kernel/      # спільне ядро
-            │   ├── ports/          # інтерфейси: S3, Crypto, Token, Transcription, EventPublisher
-            │   ├── secondary-adapters/  # s3/, crypto/, token/, transcription/, postgres/, rabbitmq/
-            │   ├── events/         # newEvent(): envelope з producer і correlation_id
-            │   ├── request-context/ # AsyncLocalStorage з request id + middleware
-            │   ├── logging/        # nestjs-pino
+            │   ├── ports/          # інтерфейси: S3, Crypto, Token
+            │   ├── secondary-adapters/  # s3/, crypto/, token/, postgres/
+            │   ├── events/         # newEvent(): envelope з producer 'core' і correlation_id
             │   ├── rest/           # ApiResponse DTO, interceptor, exception filter
             │   ├── pipe/           # SwitchableValidationPipe, TransformFilePipe
             │   ├── pagination/     # інфраструктура пагінації (НЕ використовується)
@@ -125,9 +135,8 @@ diploma/
             └── components/         # бізнес-модулі (bounded contexts)
                 ├── auth/           # register/login/logout, AuthGuard, @UserAuth()
                 ├── user/           # профіль, лайкнуті пісні/плейлисти, query/command handlers для auth
-                ├── song/           # пісні, плейлисти, song_to_playlist, listens
+                ├── song/           # пісні, плейлисти, song_to_playlist, listens; SongEnrichmentConsumer
                 ├── like/           # лайки пісень і плейлистів (toggle, soft delete)
-                ├── outbox/         # OutboxPort, outbox_events, релей у RabbitMQ
                 ├── health/         # GET /health (terminus)
                 └── comment/        # тільки модель і репозиторій, БЕЗ API
 ```
@@ -164,13 +173,14 @@ components/<name>/
 Глобального префікса (`/api`) і версіонування **немає** — ендпоінти висять у корені (`/login`, `/song`, ...).
 
 ### Модулі (`AppModule.imports`)
-`ConfigModule (global)`, `LoggerModule` (nestjs-pino), `ScheduleModule`, `PostgresConnectionModule`, `CryptoModule (global)`, `S3Module`, `RabbitMQConnectionModule`, `OutboxModule`, `UserModule`, `AuthModule`, `CommentModule`, `LikeModule`, `SongModule`, `HealthModule`. `TokenModule` (global) імпортується з `AuthModule`, `TranscriptionModule` — з `SongModule`. `OutboxModule` імпортують `AuthModule`, `SongModule`, `LikeModule`.
+`ConfigModule (global)`, `LoggerModule` (з `@platform/messaging`, nestjs-pino), `ScheduleModule`, `PostgresConnectionModule` (`autoLoadModels`, без `synchronize`), `MessagingModule` (global, з `@platform/messaging`: RabbitMQ, outbox, inbox), `CryptoModule (global)`, `S3Module`, `UserModule`, `AuthModule`, `CommentModule`, `LikeModule`, `SongModule`, `HealthModule`. `TokenModule` (global) імпортується з `AuthModule`.
 
 ### Шари і патерни
 - **Primary adapters** — контролери Nest. Роблять лише маппінг HTTP → use case.
 - **Use cases** — класи `implements UseCase<I, O>` з методом `execute()`. Уся бізнес-логіка тут.
 - **Ports** — інтерфейси репозиторіїв/сервісів, інжектяться через `Symbol.for('...')` токени (`@Inject(SongRepositoryType)`).
-- **Secondary adapters** — Sequelize-репозиторії (повертають plain-об'єкти через `.toJSON()`), S3, AssemblyAI, JWT, Crypto.
+- **Secondary adapters** — Sequelize-репозиторії (повертають plain-об'єкти через `.toJSON()`), S3, JWT, Crypto.
+- **Споживачі подій** — primary adapters на кшталт контролерів: `SongEnrichmentConsumer` (`@SubscribeToEvents('core.song-enrichment', ['song.enriched', 'song.enrichment_failed'])`) викликає use case `ApplySongEnrichmentUseCase`, який через `InboxService.runOnce` обробляє кожну подію рівно один раз.
 - **Міжмодульна взаємодія** — через `QueryBus`/`CommandBus` (`@nestjs/cqrs`). Приклади:
   - `AuthGuard` → `GetUserAuthByTokenQuery` (модуль user)
   - use cases пісень/плейлистів → `CheckSongLikeQuery`, `CheckPlaylistLikeQuery` (модуль like)
@@ -208,20 +218,20 @@ components/<name>/
 - Параметри шляху — `ParseIntPipe`.
 
 ### Конфігурація
-- `core/configuration/config.ts` — викликає `dotenv.config({ path: 'env/.env' })` (шлях відносно cwd, тобто сервер треба запускати з `server/`) і будує типізований об'єкт:
-  - `node: { port, nodeEnv, encryptionKey, jwtSecretKey }`
-  - `swagger: { username: DOCS_USER, password: DOCS_PASSWORD }`
+- `core/configuration/config.ts` — читає змінні оточення (необов'язковий `apps/core/.env` має нижчий пріоритет) і будує типізований об'єкт:
+  - `node: { port, nodeEnv, encryptionKey, jwtSecretKey, logLevel }`
+  - `swagger: { username: API_DOCS_USER, password: API_DOCS_PASSWORD }`
   - `db: { dialect: 'postgres', ..., logging: false, define: { timestamps: false }, dialectOptions.ssl }`
-  - `aws: { filesBucketName, accessKeyId, secretAccessKey, defaultRegion }`
-  - `assembly: { apiKey }`
-- Завантажується в `ConfigModule.forRoot({ isGlobal: true, load: [config] })`, використовується через `configService.get('aws.filesBucketName')` тощо.
-- `PostgresConnectionModule` — `SequelizeModule.forRootAsync`, моделі підхоплюються glob'ом `components/**/secondary-adapters/postgres/data/*.model{.ts,.js}`, стоїть `synchronize: true`, але **без `autoLoadModels: true`** — тож у `@nestjs/sequelize` авто-синхронізація схеми, найімовірніше, не спрацьовує; схема має створюватися міграціями (див. розбіжності в §4).
+  - `s3: { endpoint, region, accessKeyId, secretAccessKey, bucket, publicBaseUrl }`
+  - `rabbitmq: { uri, publishTimeoutMs }`, `outbox: { relayIntervalMs, batchSize, retentionDays }`
+- Завантажується в `ConfigModule.forRoot({ isGlobal: true, load: [config] })`, використовується через `configService.get('s3')` тощо.
+- `PostgresConnectionModule` — `SequelizeModule.forRootAsync` з `autoLoadModels: true` (моделі з усіх `SequelizeModule.forFeature`, зокрема outbox/inbox з `@platform/messaging`) і `synchronize: false`: схема — лише з міграцій.
 
 ---
 
 ## 4. Модель даних
 
-PostgreSQL, 11 таблиць з міграцій (`apps/core/src/sequelize-cli/migrations/`). Усі PK — `INTEGER autoIncrement`. `timestamps: false` глобально — `created_at` задається дефолтом `now()`, `updated_at` **немає ніде**.
+PostgreSQL, база Core `music`: 12 таблиць з міграцій (`apps/core/src/sequelize-cli/migrations/`). У тому самому контейнері — окрема база `ai_enrichment` сервісу AI enrichment (§8); Core до неї не звертається. Усі PK — `INTEGER autoIncrement`. `timestamps: false` глобально — `created_at` задається дефолтом `now()`, `updated_at` **немає ніде**.
 
 ### Таблиці
 
@@ -258,7 +268,7 @@ PostgreSQL, 11 таблиць з міграцій (`apps/core/src/sequelize-cli/
 | description | TEXT | **NOT NULL** у міграції (але код завжди пише `null` — див. розбіжності) |
 | cover_url | TEXT | NULL |
 | user_id | INTEGER | NOT NULL, FK → user.id (автор) |
-| text | TEXT | NULL — транскрипція від AssemblyAI |
+| text | TEXT | NULL — текст пісні (рядки, порожній рядок між строфами) з `song.enriched` |
 | audio | TEXT | NOT NULL — публічний URL у S3 |
 | listens | INTEGER | NOT NULL, default 0 — денормалізований лічильник |
 | created_at, deleted_at | TIMESTAMPTZ | |
@@ -285,6 +295,10 @@ PostgreSQL, 11 таблиць з міграцій (`apps/core/src/sequelize-cli/
 **`subscription`** (підписки user→user) — `id, subscriber_id (FK user), channel_id (FK user), created_at, deleted_at`. **Моделі і коду немає** — лише таблиця.
 
 **`listens`** (журнал прослуховувань) — `id, user_id (FK user), song_id (FK song), created_at, deleted_at`. Кожен `POST /song/:id/listen` додає рядок з `user_id` автентифікованого користувача в одній транзакції з `song.listens = listens + 1`. При видаленні пісні рядки фізично видаляються.
+
+Також у `song` (етап 1 і 3): `transcription JSONB` (сегменти Whisper), `transcription_status` (`pending` \| `done` \| `no_lyrics` \| `failed`), `language`, `lyrics JSONB` (строфи з типами й таймкодами рядків), `tags JSONB` (теги зі словника), `vocabulary_version INT`.
+
+**`processed_events`** (inbox) — `event_id UUID PK, processed_at`. Спожиті події; повторна доставка того самого `event_id` ігнорується.
 
 **`outbox_events`** (transactional outbox) — `id UUID PK` (= `event_id`), `event_type`, `aggregate_type`, `aggregate_id`, `payload JSONB` (повний envelope), `occurred_at`, `published_at NULL`, `attempts INT default 0`, `last_error TEXT NULL`. Частковий індекс `(occurred_at) WHERE published_at IS NULL`.
 
@@ -351,7 +365,7 @@ erDiagram
         text description
         text cover_url
         int user_id FK
-        text text "AssemblyAI transcript"
+        text text "lyrics from song.enriched"
         text audio "S3 URL"
         int listens "counter"
         timestamptz created_at
@@ -437,7 +451,7 @@ erDiagram
 ### Song (`/song`, під AuthGuard)
 | Метод | Шлях | Приймає | Повертає | Сутності |
 |---|---|---|---|---|
-| POST | `/song` | `multipart/form-data`: `name`*, файл `audio`* (відсутність → 400), файл `cover?`; поле `text` у DTO є, але ігнорується | `CreateSongResponse`: `id, name, description, cover_url, user_id, audio, text, listens, created_at, deleted_at` | S3 `song/`, `cover/`; **AssemblyAI (синхронно)**; INSERT `song` |
+| POST | `/song` | `multipart/form-data`: `name`*, файл `audio`* (відсутність → 400), файл `cover?`; поле `text` у DTO є, але ігнорується. Відповідає одразу з `transcription_status: pending` | `CreateSongResponse`: `id, name, description, cover_url, user_id, audio, text, listens, created_at, deleted_at` | S3 `song/`, `cover/`; INSERT `song` + подія `song.uploaded` (AI enrichment обробляє асинхронно, §8) |
 | GET | `/song?search=` | `search?` | `{ songs: Song[] }` — **усі** не видалені пісні; `search` лише піднімає збіги за `name ILIKE` нагору (не фільтрує), далі за `created_at DESC`. Пошуковий рядок екранується (`%`, `_`, `\` шукаються буквально) і передається як SQL-рядок через `sequelize.escape` | `song` ⋈ `user`, `like_to_song` |
 | GET | `/song/:id` | `id` | Song + `is_liked` + `user{id,username,avatar}` | `song`, `user`, `like_to_song` |
 | POST | `/song/:id/listen` | `id` | `{ status: true }`; **429**, якщо той самий користувач уже слухав цю пісню протягом 30 с (`@nestjs/throttler`, ключ `user_id:song_id`, in-memory) | у транзакції: INSERT `listens (user_id, song_id)` + `UPDATE song SET listens = listens + 1` |
@@ -495,37 +509,35 @@ erDiagram
 ## 7. Робота з аудіо
 
 - **Завантаження:** `POST /song`, `FileFieldsInterceptor([{audio,1},{cover,1}])`, Multer memory storage (файл цілком в RAM). Валідації формату/розміру/тривалості немає.
-- **Сховище:** AWS S3, бакет `BUCKET_NAME`, регіон `AWS_REGION`. `S3Service.uploadFile` робить `PutObjectCommand` з `ACL: 'public-read'`, `ContentType` = mimetype від клієнта.
+- **Сховище:** S3-сумісне (локально MinIO). `S3Service.uploadFile` робить `PutObjectCommand` з `ContentType` = mimetype від клієнта; бакет публічний на читання.
   - Ключ: `<група>/<тип>&<16 hex>.<розширення>`, наприклад `song/song&a1b2c3d4e5f6a7b8.mp3`, `cover/cover&....jpg`, `avatar/avatar&....png`.
-  - У БД пишеться повний публічний URL `https://<bucket>.s3.<region>.amazonaws.com/<key>`.
+  - У `song.audio` пишеться публічний URL (`PUBLIC_FILES_BASE_URL/<key>`); у подію `song.uploaded` — ключ (`audio_key`), за яким AI enrichment читає файл.
   - Є `deleteFileByUrl`, але **ніде не викликається** — при видаленні пісні файли лишаються.
-  - Дефолтні mock-зображення: `mock_avatar.png`, `mock-cover.jpg` у тому ж бакеті.
-- **Метадані:** зберігаються лише `name`, `audio` (URL), `cover_url`, `text` (транскрипт), `user_id`, `listens`, `created_at`. **Немає** тривалості, жанру, BPM, тональності, мови, розміру файлу, формату, тегів, аудіо-ембедингів. `description` завжди `null`.
-- **Стрімінг/відтворення:** бекенд у відтворенні не бере участі. Фронт ставить `<audio src={song.audio}>` на публічний S3-URL; перемотування працює за рахунок HTTP Range-запитів S3. Немає HLS/DASH, транскодування, підписаних URL, CDN, контролю доступу до файлів.
+- **Метадані:** `name`, `audio`, `cover_url`, `user_id`, `listens`, `created_at` + результати AI enrichment (`text`, `transcription`, `language`, `lyrics`, `tags`). **Немає** тривалості як окремого поля (є в `transcription.duration`), жанру, BPM, тональності, розміру файлу, формату.
+- **Стрімінг/відтворення:** бекенд у відтворенні не бере участі. Фронт ставить `<audio src={song.audio}>` на публічний URL; перемотування працює за рахунок HTTP Range-запитів. Немає HLS/DASH, транскодування, підписаних URL, CDN, контролю доступу до файлів.
 
 ---
 
-## 8. ШІ-транскрипція
+## 8. ШІ: сервіс AI enrichment
 
-- **Сервіс:** AssemblyAI через офіційний SDK `assemblyai` 4.12.2. Порт `AssemblyServiceInterface.songToText(url)`, адаптер `shared-kernel/secondary-adapters/assembly/assembly.service.ts`, модуль `AssemblyModule` (@Global).
-- **Виклик:**
-  ```ts
-  const transcript = await client.transcripts.transcribe({ audio: songUrl, speech_model: 'slam-1' });
-  return formatSongText(transcript.text); // заміна ". " / "? " / "! " на перенос рядка
-  ```
-  AssemblyAI отримує **публічний S3-URL** (файл уже завантажено) і сам його завантажує. `transcribe()` у SDK створює завдання і **поллить до завершення**.
-- **Синхронність:** повністю синхронно відносно HTTP-запиту `POST /song` — клієнт чекає, поки AssemblyAI обробить весь трек (десятки секунд—хвилини). Черг, воркерів, вебхуків, статусу «в обробці» немає.
-- **Результат:** рядок у `song.text` (TEXT). Жодних таймкодів слів, confidence, мови, сирого JSON-відповіді не зберігається. На фронті показується в `SongDetail` як текст пісні.
-- **Обробка помилок:**
-  - Увесь блок upload → transcribe → insert обгорнутий `try/catch`, який кидає `new Error('Error creating song')` → **500**, оригінальна причина губиться (не логується окремо, лише стек фільтром).
-  - Статус транскрипції (`transcript.status === 'error'`) **не перевіряється**. Якщо AssemblyAI повертає помилку або `text === null` (напр., інструментал без вокалу), `formatSongText(null)` кидає TypeError → **пісня не створюється зовсім**, хоча файли вже лежать у S3 (сироти).
-  - Ретраїв, таймаутів, фолбеку немає.
-- **Відомі проблеми / обмеження:**
-  1. Блокуючий запит — ризик HTTP-таймаутів на довгих треках / за проксі.
-  2. Помилка ШІ = неможливість завантажити пісню (жорстка залежність від зовнішнього сервісу).
-  3. Модель `slam-1` орієнтована на англійську мову; мова не задається й не визначається — україномовні треки, ймовірно, транскрибуються некоректно (варто перевірити в документації AssemblyAI).
-  4. Транскрипція музики з інструменталом за замовчуванням дає шумний текст; мокові дані (`mockData.songText`) натякають, що якість перевірялась на англомовному треку.
-  5. Витрата кредитів AssemblyAI на кожне завантаження без кешування/дедуплікації.
+Окремий NestJS-сервіс `apps/ai-enrichment` — плаский модуль без повного ports/adapters, провайдери ШІ за інтерфейсами (`Transcriber`, `Analyzer`) з фейковими реалізаціями. Власна БД `ai_enrichment` (користувач `ai_enrichment`, створюється init-скриптом Postgres); назовні відкритий лише `/health` (порт 3001).
+
+**Пайплайн** (`EnrichmentService`, черга `ai-enrichment.song-uploaded`, prefetch 1):
+
+1. `song.uploaded` → перевірка inbox (вже оброблено → `skipped`) → `song_enrichments.status = processing`, `attempts + 1`.
+2. Завантаження аудіо з MinIO за `audio_key` (до 3 спроб; відсутній файл не ретраїться).
+3. Транскрипція: Groq Whisper `whisper-large-v3`, `verbose_json`, `temperature: 0`, мова автоматично; файли > 24 MB стискаються ffmpeg; `429` / мережа / `5xx` — до 3 спроб з урахуванням `retry-after` (≤ 60 с). Фейковий провайдер повертає фікстуру `fixtures/transcription.json`.
+4. Немає осмисленого тексту (лише артефакти Whisper) → `no_lyrics`, LLM не викликається.
+5. Аналіз: Groq `openai/gpt-oss-120b`, `reasoning_effort: low`, structured outputs у **strict**-режимі за JSON-схемою (`analysis-schema.ts`): типи строф і теги — enum зі словника, тож модель фізично не може відповісти іншим значенням. На вхід — пронумеровані сегменти Whisper з підказками якості (`avg_logprob`, `no_speech_prob`); модель повертає строфи з рядками, що посилаються на номер сегмента, а таймкоди підставляє код — їх неможливо вигадати, і відповідь коротша (ліміт Groq 8K токенів/хв). Код додатково валідує: рядки з неіснуючим сегментом відкидаються, тегів 1–3 на групу (зайві обрізаються), `language` береться з Whisper. Невалідна відповідь → ще один виклик; не вдалось → пісня отримує текст без строф і тегів.
+6. В одній транзакції: запис inbox, `song_enrichments` (результат або помилка), подія в outbox (`song.enriched` / `song.enrichment_failed`, `correlation_id` успадковано від `song.uploaded`).
+
+**Core** (`SongEnrichmentConsumer` → `ApplySongEnrichmentUseCase`) оновлює пісню: `text`, `transcription`, `language`, `lyrics`, `tags`, `vocabulary_version`, `transcription_status` (`done` / `no_lyrics` / `failed`). Подія для видаленої пісні ігнорується. Клієнт показує «Lyrics are being processed…» і опитує `GET /song/:id` кожні 5 с, поки статус `pending`; теги — чіпами.
+
+**Словник тегів** (`TAG_VOCABULARY`, версія 1, у `@platform/contracts`): 12 настроїв, 18 тем, енергія `low|medium|high`, мова `uk|en|other`. Теги — першоджерело для майбутніх векторів треків (multi-hot), зміна словника = нова версія.
+
+**Відмовостійкість:** сервіс недоступний → `song.uploaded` чекають у durable-черзі, пісні в `pending`; після старту обробляються. Некоректне повідомлення або неочікувана помилка обробника → `Nack` без requeue → `ai-enrichment.song-uploaded.dlq`.
+
+**Обмеження:** безкоштовний тариф Groq (20 транскрипцій/хв, 30 запитів LLM/хв, 8K токенів/хв) — велика партія обробляється повільно; якість на україномовних треках і інструменталах ще не перевірена на реальному Groq.
 
 ---
 
@@ -611,7 +623,7 @@ erDiagram
 | `listens` | `(user_id, song_id, created_at)` кожного «дослухано до кінця» | ✅ історія прослуховувань на рівні користувача; rate limit 30 с на пару |
 | `song.listens` | загальна кількість «дослухано до кінця» по треку | денормалізований лічильник, атомарний інкремент |
 | події в RabbitMQ (`platform.events`) | `user.registered`, `song.uploaded`, `song.deleted`, `song.liked`, `song.unliked`, `playlist.song_added`, `playlist.song_removed` з `user_id`, `occurred_at`, `correlation_id` | ✅ потік для майбутніх Analytics/Recommendations; копія — у `outbox_events` (опубліковані зберігаються 7 днів) |
-| `song.text` | транскрипт | контентна ознака для content-based рекомендацій / NLP (тематика, настрій, мова) |
+| `song.text`, `song.lyrics`, `song.tags` | текст, строфи, теги зі словника (AI enrichment) | ✅ контентні ознаки для content-based рекомендацій; теги — основа векторів треків |
 | `user_auth.token` оновлюється при логіні | непрямо — останній логін (без timestamp) | ❌ майже нічого |
 | JSON-логи Core (pino) | запити з `req.id`, статусом і часом | ❌ не персистяться; корисні для трасування подій за `correlation_id` |
 
@@ -673,7 +685,9 @@ npm run dev                # Vite на http://localhost:5000
 ## 13. Тести
 
 - Core: Jest (`apps/core/package.json`: `rootDir: src`, `*.spec.ts`, `ts-jest`, `moduleNameMapper` для `src/*`). Запуск: `npm test` з кореня (спершу збирає contracts) або `docker compose exec core npm test`.
-- Є unit-тести релею outbox з замоканими сховищем і паблішером (`components/outbox/**/*.spec.ts`): успішна публікація позначає запис; помилка збільшує `attempts` і не позначає; батч обробляється в порядку `occurred_at` і зупиняється на першій помилці; цикли не перекриваються; помилка циклу не валить процес; вибірка `FOR UPDATE SKIP LOCKED` від найстаріших.
+- `@platform/messaging`: unit-тести релею outbox з замоканими сховищем і паблішером (`packages/messaging/src/outbox/*.spec.ts`): успішна публікація позначає запис; помилка збільшує `attempts` і не позначає; батч обробляється в порядку `occurred_at` і зупиняється на першій помилці; цикли не перекриваються; помилка циклу не валить процес; вибірка `FOR UPDATE SKIP LOCKED` від найстаріших.
+- AI enrichment: валідація відповіді LLM (теги поза словником, кількість у групах, неіснуючі сегменти) і пайплайн (повторна подія, помилка транскрипції після ретраїв, помилка лише аналізу, `no_lyrics`, відсутній файл).
+- Core: `ApplySongEnrichmentUseCase` (оновлення пісні, `no_lyrics`, `failed`, повтор події, видалена пісня).
 - Клієнт: тестового фреймворку не встановлено.
 - Лінтери: ESLint 9 + Prettier (Core), ESLint 9 (клієнт).
 
@@ -692,21 +706,17 @@ npm run dev                # Vite на http://localhost:5000
 
 Реалізовані події: `user.registered` (register), `song.uploaded` (create song, `audio_key` = ключ у MinIO), `song.deleted`, `song.liked`/`song.unliked` (like toggle, включно з відновленням), `playlist.song_added`, `playlist.song_removed`. Контракти — `packages/contracts`.
 
+Також реалізовано на етапі 3: `song.enriched`, `song.enrichment_failed` (публікує AI enrichment, споживає Core). Споживачі використовують `@SubscribeToEvents(queue, types)` з `@platform/messaging`: durable-черга сервісу, dead-letter у `<queue>.dlq`, inbox-дедуплікація за `event_id`.
+
 Кандидати на наступні етапи (ще не реалізовані):
 
-| Подія | Місце в коді (use case) | Дані, доступні на цьому місці |
-|---|---|---|
-| `UserRegistered` | `components/auth/application/usecase/register.usecase.ts` після `t.commit()` | `user.id, username, created_at` |
-| `UserLoggedIn` | `.../auth/application/usecase/login.usecase.ts` | `user.id`, час |
-| `SongUploaded` | `.../song/application/usecase/create-song.usecase.ts` після `songRepository.create` | `song.id, user_id, name, audio URL, cover_url, text` |
-| `SongDeleted` | `.../song/application/usecase/delete-song.usecase.ts` після commit | `songId, userId` |
-| `SongLiked` / `SongUnliked` | `.../like/application/usecase/create-song-like.usecase.ts` (гілки `if (like)` / `else`) | `songId, userId` |
-| `PlaylistLiked` / `PlaylistUnliked` | `.../like/application/usecase/create-playlist-like.usecase.ts` | `playlistId, userId` |
-| `PlaylistCreated` / `PlaylistDeleted` | `.../song/application/usecase/create-playlist.usecase.ts`, `delete-playlist.usecase.ts` | |
-| `SongAddedToPlaylist` | `.../song/application/usecase/add-song-to-playlist.usecase.ts` | `songId, playlistId, userId` |
-| `SongListenCompleted` | `.../song/application/usecase/create-listen-for-song.usecase.ts` + **треба додати `userId`** у контролер `song.controller.ts` (`createListenForSong` зараз не бере `@UserAuth()`) | |
-| `SongViewed` / `ProfileViewed` / `PlaylistViewed` | `get-song-by-id.usecase.ts`, `get-user-by-id.usecase.ts`, `get-playlist-by-id.usecase.ts` | impressions |
-
+| Подія | Місце в коді (use case) |
+|---|---|
+| `user.logged_in` | `auth/application/usecase/login.usecase.ts` |
+| `playlist.liked` / `playlist.unliked` | `like/application/usecase/create-playlist-like.usecase.ts` |
+| `playlist.created` / `playlist.deleted` | `song/application/usecase/create-playlist.usecase.ts`, `delete-playlist.usecase.ts` |
+| `song.listened` | `song/application/usecase/create-listen-for-song.usecase.ts` (рядок у `listens` уже пишеться) |
+| перегляди (impressions) | `get-song-by-id.usecase.ts`, `get-user-by-id.usecase.ts`, `get-playlist-by-id.usecase.ts` |
 
 ### 14.2 Бекенд: новий ендпоінт/шлюз для подій плеєра
 Події плеєра (play/pause/seek/skip/progress) бекенд зараз не бачить. Варіанти:
@@ -717,13 +727,11 @@ npm run dev                # Vite на http://localhost:5000
 ### 14.3 Бекенд: куди вбудувати рекомендації
 - `GetAllSongsUseCase` (`song/application/usecase/get-all-songs.usecase.ts`) — зараз «усі пісні за датою»; сюди або в новий `GET /song/recommended` / `GET /feed/for-you` — виклик Recommendation-сервісу (HTTP/gRPC) з фолбеком на поточну логіку.
 - Нові ендпоінти на кшталт `GET /song/:id/similar`, `GET /playlist/recommended`.
-- Для виклику зовнішніх сервісів варто повторити наявний патерн: **порт** у `shared-kernel/ports/` (як `assembly-service.interface.ts`) + **адаптер** у `shared-kernel/secondary-adapters/` + конфіг у `core/configuration/config.ts`.
+- Для виклику зовнішніх сервісів варто повторити наявний патерн: **порт** у `shared-kernel/ports/` (як `s3-service.interface.ts`) + **адаптер** у `shared-kernel/secondary-adapters/` + конфіг у `core/configuration/config.ts`.
 - Існуючі `CheckSongLikeQuery` та інші query handlers можна перевикористати для «збагачення» рекомендованих id (`is_liked`, автор) у моноліті.
 
-### 14.4 Бекенд: транскрипція як окремий AI-сервіс
-- Точка розрізу — `CreateSongUseCase`: зберегти пісню одразу з `text = null` (і, можливо, `transcription_status`), опублікувати `SongUploaded`, а AI-воркер асинхронно викликає AssemblyAI (або вебхук AssemblyAI) і повертає результат подією `SongTranscribed` / внутрішнім ендпоінтом `PATCH /internal/song/:id/text`.
-- Порт `AssemblyServiceInterface` уже ізолює інтеграцію — його можна замінити адаптером «publish to queue».
-- Той самий воркер може рахувати ембединги тексту/аудіо, мову, настрій, жанр для content-based рекомендацій.
+### 14.4 Бекенд: транскрипція як окремий AI-сервіс (реалізовано на етапі 3)
+Див. §8. Наступні кроки в тому самому сервісі: ембединги (рішення — у `docs/THESIS_CONTEXT.md`: зараз теги як вектор, ембединги згодом окремою колонкою), синхронізований текст у плеєрі за таймкодами `lyrics`.
 
 ### 14.5 Дані для сервісу профілів уподобань (початкове наповнення)
 Для backfill можна напряму (read-only репліка / CDC, напр. Debezium) або через експорт взяти: `like_to_song`, `like_to_playlist`, `song_to_playlist ⋈ playlist.user_id`, `song.user_id`, `song.text`, `song.listens`. Історії прослуховувань немає — холодний старт.
@@ -757,7 +765,7 @@ npm run dev                # Vite на http://localhost:5000
 6. ✅ (виправлено) `POST /song` без файлу `audio` → TypeError → 500.
 7. Звичайні `Error` у use case'ах → 500 замість 4xx.
 8. ✅ (виправлено) `song.listens + 1` — read-modify-write, гонки при паралельних запитах.
-9. Помилка/порожній результат AssemblyAI ламає створення пісні; файли в S3 лишаються сиротами.
+9. ✅ (виправлено) Помилка/порожній результат транскрипції ламає створення пісні — тепер транскрипція асинхронна в AI enrichment, помилка дає статус `failed`.
 10. Лайк у `BottomPlayer` не оновлює стан іконки.
 11. Змінні `API_DOCS_*` не збігаються з очікуваними `DOCS_*` → Swagger без захисту.
 
@@ -773,7 +781,7 @@ npm run dev                # Vite на http://localhost:5000
 - N+1: `is_liked` рахується окремим запитом для кожного елемента списку.
 - Немає пагінації (інфраструктура є, не підключена); `GET /song` і `GET /playlist` повертають усе.
 - ✅ (виправлено) Немає індексів на FK-колонках.
-- Синхронна транскрипція блокує запит.
+- ✅ (виправлено) Синхронна транскрипція блокує запит — `POST /song` відповідає за ~10–40 мс замість ~1 с з фейковим провайдером (з реальним Groq — секунди–хвилини).
 - Файли повністю буферизуються в RAM.
 
 **Мертвий код / залишки**

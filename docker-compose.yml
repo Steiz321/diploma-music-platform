@@ -1,4 +1,5 @@
-# Local development environment: postgres + minio + rabbitmq + core + client (npm workspaces).
+# Local development environment: postgres + minio + rabbitmq + core + ai-enrichment + client
+# (npm workspaces).
 #   docker compose up            start everything (first run builds images)
 #   docker compose down -v       stop and wipe database / files
 # Optional overrides and secrets (GROQ_API_KEY) go to the root .env, see .env.example.
@@ -21,10 +22,13 @@ services:
       POSTGRES_USER: music
       POSTGRES_PASSWORD: music
       POSTGRES_DB: music
+      # database per service: created by infra/postgres/init on a new volume
+      AI_ENRICHMENT_DB_PASSWORD: ${AI_ENRICHMENT_DB_PASSWORD:-ai-enrichment}
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U music -d music']
       interval: 2s
@@ -107,9 +111,6 @@ services:
       S3_BUCKET: music-files
       # URL used by the browser, so it points to the port published on the host
       PUBLIC_FILES_BASE_URL: http://localhost:${MINIO_PORT:-9000}/music-files
-      TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-fake}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      FAKE_TRANSCRIPTION_DELAY_MS: ${FAKE_TRANSCRIPTION_DELAY_MS:-1000}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-platform}:${RABBITMQ_PASSWORD:-platform-secret}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
@@ -144,6 +145,69 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  ai-enrichment:
+    # song.uploaded → transcription (Groq Whisper) + lyrics analysis (Groq LLM)
+    # → song.enriched; own database, consumes and publishes through RabbitMQ
+    build:
+      context: .
+      dockerfile: apps/ai-enrichment/Dockerfile
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ai_enrichment
+      DB_USERNAME: ai_enrichment
+      DB_PASSWORD: ${AI_ENRICHMENT_DB_PASSWORD:-ai-enrichment}
+      DB_SSL: 'false'
+      # read-only use: downloads uploaded audio by its object key
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio-secret}
+      S3_BUCKET: music-files
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-platform}:${RABBITMQ_PASSWORD:-platform-secret}@rabbitmq:5672
+      TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-fake}
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      FAKE_TRANSCRIPTION_DELAY_MS: ${FAKE_TRANSCRIPTION_DELAY_MS:-1000}
+      FAKE_LLM_DELAY_MS: ${FAKE_LLM_DELAY_MS:-500}
+    ports:
+      # only for opening /health from the host; other services use RabbitMQ
+      - '${AI_ENRICHMENT_PORT:-3001}:3001'
+    healthcheck:
+      # GET /health: database + RabbitMQ (the image has no curl)
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3001/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    volumes:
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - ./apps/ai-enrichment:/app/apps/ai-enrichment
+      - ./packages:/app/packages
+      # container-only node_modules
+      - ai-enrichment-node-modules:/app/node_modules
+      - ai-enrichment-app-node-modules:/app/apps/ai-enrichment/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      # in development Core builds and watches the shared packages
+      core:
+        condition: service_healthy
+
   client:
     build:
       context: .
@@ -170,3 +234,5 @@ volumes:
   core-app-node-modules:
   client-node-modules:
   client-app-node-modules:
+  ai-enrichment-node-modules:
+  ai-enrichment-app-node-modules:

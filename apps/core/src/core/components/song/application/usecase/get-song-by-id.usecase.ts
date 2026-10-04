@@ -49,6 +49,8 @@ export default class GetSongByIdUseCase
       listens: song.listens,
       transcription_status: song.transcription_status,
       language: song.language,
+      lyrics: song.lyrics ?? null,
+      tags: song.tags ?? null,
       created_at: song.created_at,
       deleted_at: song.deleted_at,
       user: {

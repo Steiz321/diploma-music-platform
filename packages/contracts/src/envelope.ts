@@ -2,7 +2,10 @@
  * Common wrapper of every event published to the broker.
  * The payload schema of each type is versioned separately by `version`.
  */
-export interface EventEnvelope<TType extends string = string, TPayload = unknown> {
+export interface EventEnvelope<
+  TType extends string = string,
+  TPayload = unknown,
+> {
   /** UUID v4, also the AMQP messageId and the outbox primary key */
   event_id: string;
   /** equals the routing key, e.g. 'song.uploaded' */

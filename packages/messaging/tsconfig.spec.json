@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "types": ["node", "jest"]
+  },
+  "include": ["src"],
+  "exclude": []
+}

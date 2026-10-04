@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { SongTags, StructuredLyrics } from '@platform/contracts';
 import { TranscriptionStatus } from 'src/core/shared-kernel/data/enum/transcription-status.enum';
 
 class User {
@@ -48,6 +49,32 @@ export class GetSongByIdResponse {
 
   @ApiProperty({ example: 'en', nullable: true })
   language: string | null;
+
+  @ApiProperty({
+    description: 'Lyrics split into verses with line timings (seconds)',
+    nullable: true,
+    example: {
+      verses: [
+        {
+          kind: 'chorus',
+          lines: [{ start: 12.4, end: 15.1, text: 'And after all' }],
+        },
+      ],
+    },
+  })
+  lyrics: StructuredLyrics | null;
+
+  @ApiProperty({
+    description: 'Tags from the fixed vocabulary of @platform/contracts',
+    nullable: true,
+    example: {
+      mood: ['melancholic'],
+      topics: ['love'],
+      energy: 'medium',
+      language: 'en',
+    },
+  })
+  tags: SongTags | null;
 
   @ApiProperty({ example: new Date() })
   created_at: Date;
