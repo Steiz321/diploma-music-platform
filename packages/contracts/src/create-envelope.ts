@@ -4,6 +4,8 @@ import { EventPayloadMap, EventType } from './events';
 
 export interface EnvelopeMeta {
   producer: string;
+  /** set when the id comes from the client (idempotent retries) */
+  event_id?: string;
   correlation_id?: string;
   user_id?: number;
   /** payload schema version, 1 by default */
@@ -18,7 +20,7 @@ export function createEnvelope<T extends EventType>(
   meta: EnvelopeMeta,
 ): EventEnvelope<T, EventPayloadMap[T]> {
   const envelope: EventEnvelope<T, EventPayloadMap[T]> = {
-    event_id: randomUUID(),
+    event_id: meta.event_id ?? randomUUID(),
     type,
     version: meta.version ?? 1,
     occurred_at: (meta.occurred_at ?? new Date()).toISOString(),

@@ -18,6 +18,10 @@ import {
   DialogActions,
   Button,
   Alert,
+  TextField,
+  FormControlLabel,
+  Switch,
+  Tooltip,
 } from "@mui/material";
 import {
   PlayArrow,
@@ -27,6 +31,8 @@ import {
   Pause,
   Favorite,
   Delete,
+  Edit,
+  RemoveCircleOutline,
 } from "@mui/icons-material";
 import playlistApi, { Playlist } from "../api/playlist";
 import songApi, { Song } from "../api/song";
@@ -49,6 +55,15 @@ const PlaylistDetails: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: "",
+    description: "",
+    is_private: false,
+  });
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [removingSongId, setRemovingSongId] = useState<number | null>(null);
 
   const currentUserId = Number(localStorage.getItem("user_id"));
   const isOwner = playlist && currentUserId === playlist.user.id;
@@ -116,7 +131,8 @@ const PlaylistDetails: React.FC = () => {
           audio: s.audio,
           is_liked: s.is_liked,
         })),
-        index
+        index,
+        { type: "playlist", id: playlist?.id }
       );
     }
   };
@@ -177,6 +193,63 @@ const PlaylistDetails: React.FC = () => {
       setDeleteError("Failed to delete playlist");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const openEdit = () => {
+    if (!playlist) return;
+    setEditForm({
+      title: playlist.title,
+      description: playlist.description ?? "",
+      is_private: playlist.is_private ?? false,
+    });
+    setEditError(null);
+    setEditOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!playlist || !editForm.title.trim()) return;
+    setSaving(true);
+    setEditError(null);
+    try {
+      const updated = await playlistApi.updatePlaylist(playlist.id, {
+        title: editForm.title.trim(),
+        description: editForm.description.trim(),
+        is_private: editForm.is_private,
+      });
+      setPlaylist((prev) =>
+        prev
+          ? {
+              ...prev,
+              title: updated.title,
+              description: updated.description,
+              is_private: updated.is_private,
+            }
+          : null
+      );
+      setEditOpen(false);
+    } catch {
+      setEditError("Failed to save the playlist");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveSong = async (e: React.MouseEvent, song: Song) => {
+    e.stopPropagation();
+    if (!playlist || removingSongId) return;
+    setRemovingSongId(song.id);
+    try {
+      await playlistApi.removeSongFromPlaylist(playlist.id, song.id);
+      setPlaylist((prev) =>
+        prev
+          ? { ...prev, songs: prev.songs.filter((s) => s.id !== song.id) }
+          : null
+      );
+    } catch (error) {
+      console.error("Error removing song from playlist:", error);
+    } finally {
+      setRemovingSongId(null);
     }
   };
 
@@ -313,17 +386,30 @@ const PlaylistDetails: React.FC = () => {
                     Created by {playlist.user.username}
                   </Typography>
                   {isOwner && (
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteDialogOpen(true);
-                      }}
-                      sx={{ ml: 1 }}
-                    >
-                      <Delete />
-                    </IconButton>
+                    <>
+                      <Tooltip title="Edit playlist">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit();
+                          }}
+                          sx={{ ml: 1 }}
+                        >
+                          <Edit />
+                        </IconButton>
+                      </Tooltip>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteDialogOpen(true);
+                        }}
+                      >
+                        <Delete />
+                      </IconButton>
+                    </>
                   )}
                 </Box>
 
@@ -382,6 +468,17 @@ const PlaylistDetails: React.FC = () => {
                     secondary={song.user.username}
                   />
                   <ListItemSecondaryAction>
+                    {isOwner && (
+                      <Tooltip title="Remove from playlist">
+                        <IconButton
+                          onClick={(e) => handleRemoveSong(e, song)}
+                          disabled={removingSongId === song.id}
+                          sx={{ mr: 1 }}
+                        >
+                          <RemoveCircleOutline />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <IconButton
                       onClick={(e) => handleLike(e, song)}
                       disabled={likingStates[song.id]}
@@ -409,6 +506,73 @@ const PlaylistDetails: React.FC = () => {
             </List>
           </Paper>
         )}
+
+        {/* Edit Playlist Dialog */}
+        <Dialog
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>Edit Playlist</DialogTitle>
+          <DialogContent>
+            <TextField
+              label="Title"
+              value={editForm.title}
+              onChange={(e) =>
+                setEditForm((form) => ({ ...form, title: e.target.value }))
+              }
+              required
+              fullWidth
+              margin="normal"
+            />
+            <TextField
+              label="Description"
+              value={editForm.description}
+              onChange={(e) =>
+                setEditForm((form) => ({
+                  ...form,
+                  description: e.target.value,
+                }))
+              }
+              fullWidth
+              multiline
+              minRows={2}
+              margin="normal"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={editForm.is_private}
+                  onChange={(e) =>
+                    setEditForm((form) => ({
+                      ...form,
+                      is_private: e.target.checked,
+                    }))
+                  }
+                />
+              }
+              label="Private"
+            />
+            {editError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {editError}
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              variant="contained"
+              disabled={saving || !editForm.title.trim()}
+            >
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Delete Confirmation Dialog */}
         <Dialog

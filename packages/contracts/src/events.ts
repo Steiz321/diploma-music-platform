@@ -1,6 +1,7 @@
 import { EventEnvelope } from './envelope';
 import { StructuredLyrics } from './lyrics';
 import { SongTags } from './tags';
+import { PlaybackPayload, PlaybackSeekedPayload } from './playback';
 import { TranscriptionResult } from './transcription';
 
 export const EVENT_TYPES = {
@@ -13,7 +14,27 @@ export const EVENT_TYPES = {
   playlistSongRemoved: 'playlist.song_removed',
   songEnriched: 'song.enriched',
   songEnrichmentFailed: 'song.enrichment_failed',
+  playbackStarted: 'playback.started',
+  playbackProgress: 'playback.progress',
+  playbackPaused: 'playback.paused',
+  playbackResumed: 'playback.resumed',
+  playbackSeeked: 'playback.seeked',
+  playbackCompleted: 'playback.completed',
+  playbackSkipped: 'playback.skipped',
 } as const;
+
+/** Player events sent by the client to POST /events. */
+export const PLAYBACK_EVENT_TYPES = [
+  EVENT_TYPES.playbackStarted,
+  EVENT_TYPES.playbackProgress,
+  EVENT_TYPES.playbackPaused,
+  EVENT_TYPES.playbackResumed,
+  EVENT_TYPES.playbackSeeked,
+  EVENT_TYPES.playbackCompleted,
+  EVENT_TYPES.playbackSkipped,
+] as const;
+
+export type PlaybackEventType = (typeof PLAYBACK_EVENT_TYPES)[number];
 
 export type EventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
 
@@ -87,6 +108,13 @@ export interface EventPayloadMap {
   'playlist.song_removed': PlaylistSongRemovedPayload;
   'song.enriched': SongEnrichedPayload;
   'song.enrichment_failed': SongEnrichmentFailedPayload;
+  'playback.started': PlaybackPayload;
+  'playback.progress': PlaybackPayload;
+  'playback.paused': PlaybackPayload;
+  'playback.resumed': PlaybackPayload;
+  'playback.seeked': PlaybackSeekedPayload;
+  'playback.completed': PlaybackPayload;
+  'playback.skipped': PlaybackPayload;
 }
 
 /** envelope of a known event type, e.g. PlatformEvent<'song.liked'> */

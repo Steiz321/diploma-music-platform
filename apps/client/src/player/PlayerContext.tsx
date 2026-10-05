@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from "react";
+import type { PlaybackSource } from "../tracking";
 
 export interface PlayerSong {
   id: number;
@@ -11,13 +12,24 @@ export interface PlayerSong {
 interface PlayerContextType {
   currentSong: PlayerSong | null;
   isPlaying: boolean;
-  playSong: (song: PlayerSong, playlist?: PlayerSong[], index?: number) => void;
+  /** source: where the queue comes from (feed, a playlist, ...) for analytics */
+  playSong: (
+    song: PlayerSong,
+    playlist?: PlayerSong[],
+    index?: number,
+    source?: PlaybackSource
+  ) => void;
   pause: () => void;
   resume: () => void;
   playNext: () => void;
   playPrev: () => void;
   playlist: PlayerSong[];
   currentIndex: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+  /** a new id for every listening session of a track (for player events) */
+  playId: string | null;
+  source: PlaybackSource;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -33,11 +45,21 @@ const PlayerProvider = ({ children }: { children: ReactNode }) => {
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [currentSong, setCurrentSong] = useState<PlayerSong | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playId, setPlayId] = useState<string | null>(null);
+  const [source, setSource] = useState<PlaybackSource>({ type: "song_page" });
+
+  // every switch of the track starts a new listening session
+  const startTrack = (song: PlayerSong) => {
+    setCurrentSong(song);
+    setPlayId(crypto.randomUUID());
+    setIsPlaying(true);
+  };
 
   const playSong = (
     song: PlayerSong,
     newPlaylist?: PlayerSong[],
-    index?: number
+    index?: number,
+    newSource?: PlaybackSource
   ) => {
     if (newPlaylist) {
       setPlaylist(newPlaylist);
@@ -48,8 +70,10 @@ const PlayerProvider = ({ children }: { children: ReactNode }) => {
       setPlaylist([song]);
       setCurrentIndex(0);
     }
-    setCurrentSong(song);
-    setIsPlaying(true);
+    if (newSource) {
+      setSource(newSource);
+    }
+    startTrack(song);
   };
 
   const playNext = () => {
@@ -57,8 +81,7 @@ const PlayerProvider = ({ children }: { children: ReactNode }) => {
     const nextIndex = currentIndex + 1;
     if (nextIndex < playlist.length) {
       setCurrentIndex(nextIndex);
-      setCurrentSong(playlist[nextIndex]);
-      setIsPlaying(true);
+      startTrack(playlist[nextIndex]);
     }
   };
 
@@ -67,8 +90,7 @@ const PlayerProvider = ({ children }: { children: ReactNode }) => {
     const prevIndex = currentIndex - 1;
     if (prevIndex >= 0) {
       setCurrentIndex(prevIndex);
-      setCurrentSong(playlist[prevIndex]);
-      setIsPlaying(true);
+      startTrack(playlist[prevIndex]);
     }
   };
 
@@ -87,6 +109,10 @@ const PlayerProvider = ({ children }: { children: ReactNode }) => {
         playPrev,
         playlist,
         currentIndex,
+        hasNext: currentIndex >= 0 && currentIndex < playlist.length - 1,
+        hasPrev: currentIndex > 0,
+        playId,
+        source,
       }}
     >
       {children}

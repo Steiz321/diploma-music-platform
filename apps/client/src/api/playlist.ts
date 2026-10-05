@@ -7,6 +7,7 @@ export interface Playlist {
   cover_url: string;
   user_id: number;
   songs_count: number;
+  is_private?: boolean;
   is_liked: boolean;
   user: {
     id: number;
@@ -74,6 +75,22 @@ const playlistApi = {
 
   deletePlaylist: async (playlistId: number): Promise<void> => {
     await apiClient.delete(`/playlist/${playlistId}`);
+  },
+
+  /** only the fields passed are changed */
+  updatePlaylist: async (
+    playlistId: number,
+    changes: { title?: string; description?: string; is_private?: boolean }
+  ): Promise<Playlist> => {
+    const response = await apiClient.patch(`/playlist/${playlistId}`, changes);
+    return response.data.data;
+  },
+
+  removeSongFromPlaylist: async (
+    playlistId: number,
+    songId: number
+  ): Promise<void> => {
+    await apiClient.delete(`/playlist/${playlistId}/song/${songId}`);
   },
 };
 

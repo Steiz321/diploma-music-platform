@@ -5,3 +5,4 @@ export * from './create-envelope';
 export * from './transcription';
 export * from './lyrics';
 export * from './tags';
+export * from './playback';

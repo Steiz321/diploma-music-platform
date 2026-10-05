@@ -5,7 +5,7 @@
 > поведінкової аналітики та ШІ»). Документ описує **лише те, що є в коді**; розбіжності та баги
 > позначені явно. Початковий опис — стан на 2026-09-26; розділи, яких торкнулися етап 2
 > (багфікси, монорепо, RabbitMQ, transactional outbox, логи й health checks, 2026-10-03) і етап 3
-> (сервіс AI enrichment, 2026-10-04), оновлено. Інфраструктура етапу 1 (Docker Compose, MinIO замість
+> (сервіс AI enrichment, 2026-10-04), а також події плеєра (`POST /events`, трекер на клієнті, 2026-10-05) оновлено. Інфраструктура етапу 1 (Docker Compose, MinIO замість
 > AWS S3) описана в `README.md`; розділ 12 і частина розділу 7 ще описують бакалаврський стан.
 
 ---
@@ -16,7 +16,7 @@
 - Core — **модульний моноліт у стилі гексагональної архітектури** (ports & adapters) + CQRS-шина `@nestjs/cqrs` для міжмодульних викликів (query/command handlers). Доменні події пишуться в **transactional outbox** (`outbox_events`) у транзакції use case'а і публікуються релеєм у **RabbitMQ** (topic exchange `platform.events`). `EventBus` з `@nestjs/cqrs` для цього свідомо не використовується.
 - Файли (аудіо, обкладинки, аватари) — **AWS S3, публічні URL**; стрімінг — браузерний `<audio src="https://bucket.s3...">` напряму з S3 (бекенд аудіо не проксує).
 - ШІ — окремий сервіс **AI enrichment**: за подією `song.uploaded` транскрибує аудіо (Groq Whisper) і аналізує текст (Groq `gpt-oss-120b`: строфи з таймкодами, теги зі словника), результат повертає в Core подією `song.enriched`. `POST /song` на транскрипцію не чекає (див. §8).
-- Поведінкові дані сьогодні: лайки (toggle з **м'яким видаленням**, один рядок на пару), кожне прослуховування на `ended` — рядок у `listens` з `user_id` + атомарний інкремент `song.listens` (rate limit 1 раз на 30 с на пару користувач–пісня), доменні події `song.liked`/`song.unliked`/`playlist.song_added`/... у RabbitMQ. Подій play/pause/seek/skip на бекенд поки не надходить (`POST /events` — наступний етап).
+- Поведінкові дані сьогодні: лайки (toggle з **м'яким видаленням**, один рядок на пару), кожне прослуховування на `ended` — рядок у `listens` з `user_id` + атомарний інкремент `song.listens` (rate limit 1 раз на 30 с на пару користувач–пісня), доменні події `song.liked`/`song.unliked`/`playlist.song_added`/... і **події плеєра** `playback.*` (start, progress, pause/resume, seek, complete, skip з позицією, `play_id` і `source`) у RabbitMQ.
 - Відомі проблеми — §15; виправлені на етапі 2 позначені ✅.
 
 ---
@@ -483,6 +483,11 @@ erDiagram
 | GET | `/docs` | Swagger UI. Basic-auth вмикається, якщо задано `API_DOCS_USER`/`API_DOCS_PASSWORD` (порожні — відкрито). |
 | GET | `/health` | без auth: `@nestjs/terminus`, перевіряє БД (ping) і з'єднання з RabbitMQ; 200 або 503. Healthcheck контейнера Core |
 
+### Events (`/events`, під AuthGuard)
+| Метод | Шлях | Приймає | Повертає | Сутності |
+|---|---|---|---|---|
+| POST | `/events` | JSON `{ events: [...] }`, 1–50 подій плеєра: `event_id` (UUID клієнта), `type` (`playback.*`), `occurred_at`, `play_id`, `song_id`, `position_sec`, `duration_sec?`, `source { type, id? }`, для `playback.seeked` — `from_sec`, `to_sec`. 30 запитів/хв на користувача (`429`) | `202 { accepted, duplicates }` | одна транзакція: `INSERT … ON CONFLICT DO NOTHING` в `outbox_events` (повторний `event_id` пропускається); `user_id` — з токена |
+
 ---
 
 ## 6. Автентифікація і користувачі
@@ -592,22 +597,20 @@ erDiagram
   - кнопка play/pause → `pause()`/`resume()` контексту → `audio.play()/pause()` в `useEffect`;
   - `onEnded` → **`POST /song/:id/listen`**, потім `playNext()`;
   - кнопка ❤ → `POST /song-like` (але іконка не оновлюється — `currentSong.is_liked` не змінюється).
-- **Які події генеруються і куди йдуть:**
+- **Next / previous** — кнопки в `BottomPlayer` (`playNext` / `playPrev` по черзі, з якої запущено трек).
+- **Події плеєра** — хук `player/usePlaybackTracking.ts` слухає `<audio>` (`playing`, `pause`, `ended`, `timeupdate`) і повзунок; кожен трек отримує новий `play_id` у `PlayerContext`, `source` передають сторінки в `playSong(song, queue, index, source)`. Події йдуть у трекер `tracking/tracker.ts` (черга, батчі на `POST /events`, `fetch` з `keepalive`).
 
-| Подія | Де виникає | Відправляється на бекенд? |
+| Подія | Де виникає | На бекенд |
 |---|---|---|
-| play (старт треку) | `SongCard`/`SongDetail`/`PlaylistDetails` → `playSong` | ні |
-| pause / resume | `BottomPlayer`, `SongCard`, сторінки | ні |
-| seek | `Slider onChange` у `BottomPlayer` | ні |
-| timeupdate / прогрес | `onTimeUpdate` | ні |
-| ended (дослухано до кінця) | `<audio onEnded>` | **так** — `POST /song/:id/listen` (лише інкремент лічильника) |
-| next (автоматичний після ended) | `playNext()` | ні |
-| skip (ручний next) | кнопки немає | — |
-| prev | метод є, кнопки немає | — |
-| like/unlike | `SongCard`, `BottomPlayer`, `SongDetail`, `PlaylistDetails` | **так** — `POST /song-like` (toggle) |
+| play (старт треку) | `<audio onPlaying>` вперше в сесії | `playback.started` |
+| прогрес | таймер 15 с, поки трек грає | `playback.progress` |
+| pause / resume | `<audio onPause>` / `onPlaying` після паузи | `playback.paused` / `playback.resumed` |
+| seek | повзунок: `onChange` запам'ятовує початок, `onChangeCommitted` — кінець | `playback.seeked` (`from_sec`, `to_sec`) |
+| ended | `<audio onEnded>` | `playback.completed` + `POST /song/:id/listen` |
+| skip / next / prev / інший трек до кінця | зміна `play_id`, поки сесія не завершена | `playback.skipped` з останньою позицією |
+| like/unlike | `SongCard`, `BottomPlayer`, `SongDetail`, `PlaylistDetails` | `POST /song-like` → `song.liked` / `song.unliked` |
 | volume / mute | немає | — |
 
-Трек, перервений перемиканням на інший (`playSong` з іншим треком), не фіксується ніяк.
 
 ---
 
@@ -628,9 +631,8 @@ erDiagram
 | JSON-логи Core (pino) | запити з `req.id`, статусом і часом | ❌ не персистяться; корисні для трасування подій за `correlation_id` |
 
 ### Чого немає (чесно)
-- Подій **play, pause, seek, skip, progress, повторне прослуховування, частка дослуханого, тривалість сесії**.
-- **Негативних сигналів** (skip у перші N секунд, unlike, dislike, приховування).
-- **Контексту** відтворення (з якої сторінки/плейлиста/рекомендації запущено, позиція в черзі).
+- Готових агрегатів (частка дослуханого, skip у перші 30 с, тривалість сесії) — сирі події `playback.*` є, рахувати їх буде Analytics.
+- Dislike / приховування треку (негативні сигнали зараз — `playback.skipped` і `song.unliked`).
 - Сесій, пристрою, user-agent, геолокації, часових поясів.
 - Пошукових запитів (пошук не використовується фронтом).
 - Переглядів сторінок пісні/профілю/плейлиста (impressions).
@@ -688,7 +690,8 @@ npm run dev                # Vite на http://localhost:5000
 - `@platform/messaging`: unit-тести релею outbox з замоканими сховищем і паблішером (`packages/messaging/src/outbox/*.spec.ts`): успішна публікація позначає запис; помилка збільшує `attempts` і не позначає; батч обробляється в порядку `occurred_at` і зупиняється на першій помилці; цикли не перекриваються; помилка циклу не валить процес; вибірка `FOR UPDATE SKIP LOCKED` від найстаріших.
 - AI enrichment: валідація відповіді LLM (теги поза словником, кількість у групах, неіснуючі сегменти) і пайплайн (повторна подія, помилка транскрипції після ретраїв, помилка лише аналізу, `no_lyrics`, відсутній файл).
 - Core: `ApplySongEnrichmentUseCase` (оновлення пісні, `no_lyrics`, `failed`, повтор події, видалена пісня).
-- Клієнт: тестового фреймворку не встановлено.
+- Core: валідація `POST /events` (типи, джерела, межі, `from_sec`/`to_sec` для seek), use case (envelope на подію, `user_id` з токена, час клієнта з межами, дублі).
+- Клієнт: Vitest (`npm test` в `apps/client`), unit-тести трекера: батчі, розбиття по 50, повтор невдалого батчу в тому ж порядку з тими самими `event_id`, відкидання при `4xx`, ліміт черги.
 - Лінтери: ESLint 9 + Prettier (Core), ESLint 9 (клієнт).
 
 ---
@@ -718,11 +721,8 @@ npm run dev                # Vite на http://localhost:5000
 | `song.listened` | `song/application/usecase/create-listen-for-song.usecase.ts` (рядок у `listens` уже пишеться) |
 | перегляди (impressions) | `get-song-by-id.usecase.ts`, `get-user-by-id.usecase.ts`, `get-playlist-by-id.usecase.ts` |
 
-### 14.2 Бекенд: новий ендпоінт/шлюз для подій плеєра
-Події плеєра (play/pause/seek/skip/progress) бекенд зараз не бачить. Варіанти:
-- **(A)** Новий модуль `components/analytics/` у моноліті з `POST /events` (batch), що валідує, додає `user_id` з `AuthGuard` і публікує в брокер — моноліт як BFF/шлюз.
-- **(B)** Фронт шле події напряму в окремий **Event Collector** сервіс; автентифікація — той самий JWT (`JWT_SECRET_KEY`). ⚠️ Але поточний `AuthGuard` вимагає lookup токена в `user_auth` — зовнішній сервіс зможе перевірити лише підпис/строк (stateless) або має питати моноліт (напр., внутрішній `GET /auth/introspect`, якого зараз немає).
-- `AuthGuard` (`components/auth/application/guards/auth.guard.ts`) — природне місце, щоб прокидати `user_id`/кореляційний id у заголовки для даунстрім-сервісів, якщо моноліт стане шлюзом.
+### 14.2 Бекенд: ендпоінт для подій плеєра (реалізовано)
+Варіант (A): Core як BFF/шлюз — `POST /events` (компонент `components/playback/`), `user_id` з `AuthGuard`, кожна подія — envelope в outbox, далі RabbitMQ (`playback.*`). Нові сервіси назовні не відкриті й автентифікацією не займаються.
 
 ### 14.3 Бекенд: куди вбудувати рекомендації
 - `GetAllSongsUseCase` (`song/application/usecase/get-all-songs.usecase.ts`) — зараз «усі пісні за датою»; сюди або в новий `GET /song/recommended` / `GET /feed/for-you` — виклик Recommendation-сервісу (HTTP/gRPC) з фолбеком на поточну логіку.
@@ -736,14 +736,8 @@ npm run dev                # Vite на http://localhost:5000
 ### 14.5 Дані для сервісу профілів уподобань (початкове наповнення)
 Для backfill можна напряму (read-only репліка / CDC, напр. Debezium) або через експорт взяти: `like_to_song`, `like_to_playlist`, `song_to_playlist ⋈ playlist.user_id`, `song.user_id`, `song.text`, `song.listens`. Історії прослуховувань немає — холодний старт.
 
-### 14.6 Фронтенд: де емітити події плеєра
-Усе зосереджено в двох файлах:
-- **`client/src/player/PlayerContext.tsx`** — `playSong` (play + контекст: черга, індекс, джерело), `pause`, `resume`, `playNext` (skip/auto-next), `playPrev`. Тут зручно зробити централізований `track(event)` і знати **попередній трек і позицію** при перемиканні (для skip/частки дослуханого).
-- **`client/src/player/BottomPlayer.tsx`** — прив'язки до `<audio>`: `onEnded` (complete), `onTimeUpdate` (heartbeat/прогрес кожні N с), `Slider onChange` (seek from→to), `onLoadedMetadata` (duration), кнопка like. Також можна додати `onPlay`, `onPause`, `onError`, `onWaiting` (буферизація).
-- Для контексту (з якої сторінки/рекомендації запущено) — місця виклику `playSong`: `components/SongCard.tsx`, `pages/SongDetail.tsx`, `pages/PlaylistDetails.tsx` (передавати `source: 'feed' | 'playlist:<id>' | 'profile:<id>' | 'recommendations'`).
-- Impressions/перегляди — `pages/Feed.tsx`, `pages/SongDetail.tsx`, `pages/Profile.tsx`, `pages/PlaylistDetails.tsx`.
-- Інфраструктурно: немає централізованого HTTP-клієнта (є невикористаний `api/client.ts` з інтерсептором) і конфігурації URL — для кількох бекендів (моноліт + event collector + recommender) доведеться винести базові URL у `VITE_*` змінні.
-- Батчинг + `navigator.sendBeacon` на `visibilitychange`/`pagehide`, щоб не губити події при закритті вкладки.
+### 14.6 Фронтенд: події плеєра (реалізовано)
+Див. §10 «Плеєр»: `player/usePlaybackTracking.ts` + `tracking/tracker.ts`. Наступне: `source: 'recommendations'` для рекомендацій, impressions (перегляди сторінок).
 
 ### 14.7 Що заважає/варто поправити перед виносом у мікросервіси
 - ✅ Баг `userAuth.id` vs `userAuth.user_id`.

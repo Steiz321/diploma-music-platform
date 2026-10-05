@@ -179,6 +179,7 @@ const Profile: React.FC = () => {
                   song={song}
                   songs={displaySongs}
                   index={idx}
+                  source={{ type: "profile", id: user?.id }}
                 />
               ))}
             </Box>

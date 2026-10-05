@@ -103,7 +103,10 @@ describe('EnrichmentService', () => {
       isProcessed: jest.fn().mockResolvedValue(false),
       markProcessed: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<InboxService>;
-    outbox = { add: jest.fn().mockResolvedValue(undefined) };
+    outbox = {
+      add: jest.fn().mockResolvedValue(undefined),
+      addMany: jest.fn(),
+    };
     transcriber = {
       model: 'whisper-large-v3',
       transcribe: jest.fn().mockResolvedValue(TRANSCRIPTION),

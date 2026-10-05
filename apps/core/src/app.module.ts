@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import {
   LoggerModule,
   MessagingModule,
@@ -20,6 +21,8 @@ import { LikeModule } from './core/components/like/like.module';
 import { SongModule } from './core/components/song/song.module';
 import { SONG_ENRICHMENT_QUEUE } from './core/components/song/primary-adapters/song-enrichment.consumer';
 import { HealthModule } from './core/components/health/health.module';
+import { PlaybackModule } from './core/components/playback/playback.module';
+import { THROTTLERS } from './core/shared-kernel/data/constants/throttlers.constant';
 
 @Module({
   imports: [
@@ -34,6 +37,8 @@ import { HealthModule } from './core/components/health/health.module';
       }),
     }),
     ScheduleModule.forRoot(),
+    // global; the guards are applied per route
+    ThrottlerModule.forRoot(Object.values(THROTTLERS)),
     PostgresConnectionModule,
     // RabbitMQ, transactional outbox + relay, inbox (global)
     MessagingModule.forRootAsync({
@@ -52,6 +57,7 @@ import { HealthModule } from './core/components/health/health.module';
     CommentModule,
     LikeModule,
     SongModule,
+    PlaybackModule,
     HealthModule,
   ],
   controllers: [AppController],
