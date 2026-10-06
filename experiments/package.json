@@ -1,0 +1,17 @@
+{
+  "name": "@platform/experiments",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Experiments of the thesis: user simulator, offline recommendation metrics, k6 load tests",
+  "type": "module",
+  "scripts": {
+    "simulate": "node src/simulate.ts",
+    "evaluate": "node src/evaluate.ts",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.0.0",
+    "@platform/contracts": "*"
+  }
+}

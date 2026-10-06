@@ -54,16 +54,18 @@ export default class DeletePlaylistUseCase
       );
     }
 
+    // read before the transaction: a query outside an open transaction needs
+    // a second pool connection (pool exhaustion under parallel requests)
+    const songsInPlaylist = await this.songToPlaylistRepository.getAllWhere({
+      playlist_id: playlistId,
+    });
+
     const t = await this.sequelize.transaction();
 
     try {
       await this.commandBus.execute(
         new DeletePlaylistLikesCommand(playlistId, t),
       );
-
-      const songsInPlaylist = await this.songToPlaylistRepository.getAllWhere({
-        playlist_id: playlistId,
-      });
 
       if (songsInPlaylist.length > 0) {
         for (const songInPlaylist of songsInPlaylist) {

@@ -1,0 +1,148 @@
+{
+    "root_group": {
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "ok (200)": {
+                    "name": "ok (200)",
+                    "path": "::ok (200)",
+                    "id": "71159f6c2e3c603f60da1bf806934f0b",
+                    "passes": 240,
+                    "fails": 0
+                }
+            },
+        "name": ""
+    },
+    "metrics": {
+        "http_req_waiting": {
+            "avg": 840.8245449170125,
+            "min": 208.999375,
+            "med": 837.375876,
+            "max": 887.976584,
+            "p(90)": 868.067292,
+            "p(95)": 879.844709
+        },
+        "http_req_duration": {
+            "max": 888.028584,
+            "p(90)": 868.217792,
+            "p(95)": 879.964417,
+            "avg": 840.8919894315347,
+            "min": 209.239666,
+            "med": 837.440292
+        },
+        "http_req_tls_handshaking": {
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0
+        },
+        "http_req_receiving": {
+            "p(90)": 0.092292,
+            "p(95)": 0.122167,
+            "avg": 0.052199867219917026,
+            "min": 0.0145,
+            "med": 0.038417,
+            "max": 0.388209
+        },
+        "http_req_sending": {
+            "p(90)": 0.01575,
+            "p(95)": 0.028542,
+            "avg": 0.015244647302904566,
+            "min": 0.003292,
+            "med": 0.007042,
+            "max": 1.111042
+        },
+        "vus_max": {
+            "min": 10,
+            "max": 10,
+            "value": 10
+        },
+        "data_sent": {
+            "count": 115205,
+            "rate": 5628.781506861717
+        },
+        "data_received": {
+            "count": 1022580,
+            "rate": 49962.062352212626
+        },
+        "checks": {
+            "passes": 240,
+            "fails": 0,
+            "value": 1
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 241,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        },
+        "http_req_connecting": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.11656638589211618,
+            "min": 0,
+            "med": 0,
+            "max": 3.674417
+        },
+        "popular_fallback": {
+            "count": 240,
+            "rate": 11.72611919314971
+        },
+        "http_req_duration{name:GET /song/recommended}": {
+            "avg": 843.5238741124995,
+            "min": 825.45525,
+            "med": 837.4895835,
+            "max": 888.028584,
+            "p(90)": 868.2379462,
+            "p(95)": 879.97152535,
+            "thresholds": {
+                "p(95)<2000": false
+            }
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 840.8919894315347,
+            "min": 209.239666,
+            "med": 837.440292,
+            "max": 888.028584,
+            "p(90)": 868.217792,
+            "p(95)": 879.964417
+        },
+        "iteration_duration": {
+            "p(95)": 880.405034,
+            "avg": 843.7664502166667,
+            "min": 825.548375,
+            "med": 837.5943335,
+            "max": 888.126625,
+            "p(90)": 868.5886465
+        },
+        "http_req_blocked": {
+            "avg": 0.1244125145228214,
+            "min": 0.000875,
+            "med": 0.002042,
+            "max": 3.747167,
+            "p(90)": 0.004833,
+            "p(95)": 0.012
+        },
+        "vus": {
+            "max": 10,
+            "value": 10,
+            "min": 10
+        },
+        "iterations": {
+            "count": 240,
+            "rate": 11.72611919314971
+        },
+        "http_reqs": {
+            "count": 241,
+            "rate": 11.774978023121166
+        }
+    },
+    "setup_data": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NzUsInVzZXJuYW1lIjoiazYtZmVlZC0xNzkxMzE2MzM1NTQ1LTg2NTY5NiIsImVtYWlsIjoiazYtZmVlZC0xNzkxMzE2MzM1NTQ1LTg2NTY5NkBrNi5sb2NhbCIsImRlc2NyaXB0aW9uIjpudWxsLCJhdmF0YXIiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAvbXVzaWMtZmlsZXMvbW9ja19hdmF0YXIucG5nIiwiaWF0IjoxNzkxMzE2MzM1LCJleHAiOjE3OTEzMjcxMzV9.vIJwMXC4RVxCZBgY9UTB6Y7MBBULIkQlTIgqvzNHurQ"
+    }
+}

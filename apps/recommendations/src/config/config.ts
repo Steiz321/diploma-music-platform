@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import Configuration from './config.type';
-import { RankingWeights } from '../ranking/ranking';
+import { parseWeights } from '../ranking/ranking';
 
 // apps/recommendations/.env is optional: in Docker the variables come from
 // the environment, and they take precedence over the file
@@ -10,19 +10,6 @@ const envPath = resolve(__dirname, '../..', '.env');
 if (existsSync(envPath)) {
   dotenv.config({ path: envPath });
 }
-
-/** "content,collaborative,popularity", e.g. "0.6,0.3,0.1" */
-const parseWeights = (
-  value: string | undefined,
-  defaults: RankingWeights,
-): RankingWeights => {
-  const parts = (value ?? '').split(',').map((part) => Number(part.trim()));
-  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
-    return defaults;
-  }
-  const [content, collaborative, popularity] = parts;
-  return { content, collaborative, popularity };
-};
 
 const configure = (): Configuration => ({
   node: {

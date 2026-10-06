@@ -147,5 +147,22 @@ describe('ApplySongEnrichmentUseCase', () => {
     await expect(useCase.execute(songEnriched())).resolves.toBe('song_missing');
 
     expect(songRepository.update).not.toHaveBeenCalled();
+    expect(inbox.runOnce).not.toHaveBeenCalled();
+  });
+
+  it('looks the song up before opening the transaction (no second connection)', async () => {
+    const order: string[] = [];
+    songRepository.getOneWhere.mockImplementation(async () => {
+      order.push('lookup');
+      return { id: 42 } as any;
+    });
+    inbox.runOnce.mockImplementation(async (_id, work) => {
+      order.push('transaction');
+      return { processed: true, result: await work(TX) };
+    });
+
+    await useCase.execute(songEnriched());
+
+    expect(order).toEqual(['lookup', 'transaction']);
   });
 });

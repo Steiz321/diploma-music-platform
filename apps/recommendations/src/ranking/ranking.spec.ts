@@ -1,5 +1,5 @@
 import { SongTags, TAG_VECTOR_KEYS } from '@platform/contracts';
-import { Candidate, rank, reasonTags } from './ranking';
+import { Candidate, parseWeights, rank, reasonTags } from './ranking';
 
 const WEIGHTS = { content: 0.6, collaborative: 0.3, popularity: 0.1 };
 
@@ -145,5 +145,23 @@ describe('reasonTags', () => {
   it('has nothing to say without tags or a reference', () => {
     expect(reasonTags(null, profile({}))).toEqual([]);
     expect(reasonTags(tags(['sad'], ['love']), null)).toEqual([]);
+  });
+});
+
+describe('parseWeights', () => {
+  const defaults = { content: 0.6, collaborative: 0.3, popularity: 0.1 };
+
+  it('reads "content,collaborative,popularity"', () => {
+    expect(parseWeights('0,0,1', defaults)).toEqual({
+      content: 0,
+      collaborative: 0,
+      popularity: 1,
+    });
+  });
+
+  it('keeps the defaults for a missing or malformed value', () => {
+    expect(parseWeights(undefined, defaults)).toBe(defaults);
+    expect(parseWeights('1,2', defaults)).toBe(defaults);
+    expect(parseWeights('a,b,c', defaults)).toBe(defaults);
   });
 });
