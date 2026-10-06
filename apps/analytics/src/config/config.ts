@@ -14,6 +14,7 @@ const configure = (): Configuration => ({
   node: {
     port: Number(process.env.PORT) || 3002,
     logLevel: process.env.LOG_LEVEL || 'info',
+    debugEndpoints: process.env.ANALYTICS_DEBUG_ENDPOINTS === 'true',
   },
   db: {
     dialect: 'postgres',

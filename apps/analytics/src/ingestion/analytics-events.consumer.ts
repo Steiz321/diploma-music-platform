@@ -3,6 +3,7 @@ import {
   EVENT_TYPES,
   EventEnvelope,
   EventType,
+  isFromExpectedProducer,
   PLAYBACK_EVENT_TYPES,
 } from '@platform/contracts';
 import { SubscribeToEvents, withEventContext } from '@platform/messaging';
@@ -21,9 +22,11 @@ export const CONSUMED_EVENT_TYPES: EventType[] = [
   EVENT_TYPES.songDeleted,
 ];
 
-const isEnvelope = (event: any): event is EventEnvelope =>
+// user_id of likes, playlists and player events is trusted only from Core
+export const isValidAnalyticsEvent = (event: any): event is EventEnvelope =>
   typeof event?.event_id === 'string' &&
   CONSUMED_EVENT_TYPES.includes(event.type) &&
+  isFromExpectedProducer(event) &&
   typeof event.occurred_at === 'string' &&
   Number.isInteger(event.payload?.song_id);
 
@@ -33,10 +36,11 @@ export class AnalyticsEventsConsumer {
 
   constructor(private readonly ingestion: IngestionService) {}
 
-  // a malformed message or an unexpected error rejects it to the DLQ
+  // a malformed message, a wrong producer or an unexpected error rejects it
+  // to the DLQ (kept there for inspection)
   @SubscribeToEvents(ANALYTICS_QUEUE, CONSUMED_EVENT_TYPES)
   async handle(event: EventEnvelope): Promise<void> {
-    if (!isEnvelope(event)) {
+    if (!isValidAnalyticsEvent(event)) {
       throw new Error(
         `Invalid analytics message: ${JSON.stringify(event)?.slice(0, 300)}`,
       );

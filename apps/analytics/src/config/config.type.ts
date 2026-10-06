@@ -16,7 +16,12 @@ export interface ProfilesConfig {
 }
 
 export default interface Configuration {
-  node: { port: number; logLevel: string };
+  node: {
+    port: number;
+    logLevel: string;
+    /** GET /profiles/:userId exposes listening data without auth: dev only */
+    debugEndpoints: boolean;
+  };
   db: SequelizeModuleOptions;
   rabbitmq: RabbitMQConfig;
   outbox: OutboxOptions;

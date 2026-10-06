@@ -1,17 +1,37 @@
-import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  ParseIntPipe,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TAG_VECTOR_KEYS } from '@platform/contracts';
 import { AnalyticsRepository } from '../common/analytics.repository';
 
 /**
- * Debug view of a user's profile for the demo. Internal: like the other new
- * services, Analytics is not exposed to the client.
+ * Debug view of a user's profile for the demo. It has no authentication, so
+ * it exists only when ANALYTICS_DEBUG_ENDPOINTS=true (development); like the
+ * other new services, Analytics is not exposed to the client.
  */
 @Controller('profiles')
 export class ProfilesController {
-  constructor(private readonly repository: AnalyticsRepository) {}
+  private readonly enabled: boolean;
+
+  constructor(
+    private readonly repository: AnalyticsRepository,
+    configService: ConfigService,
+  ) {
+    this.enabled = configService.get<boolean>('node.debugEndpoints');
+  }
 
   @Get(':userId')
   async get(@Param('userId', ParseIntPipe) userId: number) {
+    if (!this.enabled) {
+      // indistinguishable from a route that does not exist
+      throw new NotFoundException();
+    }
+
     const { profile, scores, sessions } =
       await this.repository.profileView(userId);
     const vector = (profile?.vector as number[] | null) ?? null;

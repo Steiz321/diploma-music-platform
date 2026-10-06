@@ -7,3 +7,4 @@ export * from './lyrics';
 export * from './tags';
 export * from './playback';
 export * from './profile';
+export * from './producers';

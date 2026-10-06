@@ -175,8 +175,8 @@ services:
       FAKE_TRANSCRIPTION_DELAY_MS: ${FAKE_TRANSCRIPTION_DELAY_MS:-1000}
       FAKE_LLM_DELAY_MS: ${FAKE_LLM_DELAY_MS:-500}
     ports:
-      # only for opening /health from the host; other services use RabbitMQ
-      - '${AI_ENRICHMENT_PORT:-3001}:3001'
+      # only for opening /health from this machine; services talk via RabbitMQ
+      - '127.0.0.1:${AI_ENRICHMENT_PORT:-3001}:3001'
     healthcheck:
       # GET /health: database + RabbitMQ (the image has no curl)
       test:
@@ -227,9 +227,11 @@ services:
       DB_SSL: 'false'
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-platform}:${RABBITMQ_PASSWORD:-platform-secret}@rabbitmq:5672
       PROFILE_RECOMPUTE_INTERVAL_MS: ${PROFILE_RECOMPUTE_INTERVAL_MS:-60000}
+      # GET /profiles/:userId has no auth: development only
+      ANALYTICS_DEBUG_ENDPOINTS: ${ANALYTICS_DEBUG_ENDPOINTS:-true}
     ports:
-      # /health and the debug view GET /profiles/:userId from the host
-      - '${ANALYTICS_PORT:-3002}:3002'
+      # /health and the debug view, reachable only from this machine
+      - '127.0.0.1:${ANALYTICS_PORT:-3002}:3002'
     healthcheck:
       # GET /health: database + RabbitMQ (the image has no curl)
       test:
