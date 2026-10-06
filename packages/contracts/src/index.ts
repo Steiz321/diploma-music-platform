@@ -6,3 +6,4 @@ export * from './transcription';
 export * from './lyrics';
 export * from './tags';
 export * from './playback';
+export * from './profile';

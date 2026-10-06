@@ -5,19 +5,21 @@
 > поведінкової аналітики та ШІ»). Документ описує **лише те, що є в коді**; розбіжності та баги
 > позначені явно. Початковий опис — стан на 2026-09-26; розділи, яких торкнулися етап 2
 > (багфікси, монорепо, RabbitMQ, transactional outbox, логи й health checks, 2026-10-03) і етап 3
-> (сервіс AI enrichment, 2026-10-04), а також події плеєра (`POST /events`, трекер на клієнті, 2026-10-05) оновлено. Інфраструктура етапу 1 (Docker Compose, MinIO замість
+> (сервіс AI enrichment, 2026-10-04), події плеєра (`POST /events`, трекер на клієнті, 2026-10-05) і сервіс Analytics
+> (профілі вподобань, 2026-10-06) оновлено. Інфраструктура етапу 1 (Docker Compose, MinIO замість
 > AWS S3) описана в `README.md`; розділ 12 і частина розділу 7 ще описують бакалаврський стан.
 
 ---
 
 ## 0. TL;DR
 
-- **Монорепо на npm workspaces**: `apps/core` (NestJS 11 + Sequelize 6 + PostgreSQL), `apps/ai-enrichment` (NestJS, власна БД), `apps/client` (React 19 + Vite 6 + MUI 7), `packages/contracts` (`@platform/contracts` — контракти подій, словник тегів), `packages/messaging` (`@platform/messaging` — RabbitMQ, outbox, inbox, логи). Git, Docker Compose, `.env.example`; CI немає.
+- **Монорепо на npm workspaces**: `apps/core` (NestJS 11 + Sequelize 6 + PostgreSQL), `apps/ai-enrichment` (NestJS, власна БД), `apps/analytics` (NestJS, власна БД), `apps/client` (React 19 + Vite 6 + MUI 7), `packages/contracts` (`@platform/contracts` — контракти подій, словник тегів), `packages/messaging` (`@platform/messaging` — RabbitMQ, outbox, inbox, логи). Git, Docker Compose, `.env.example`; CI немає.
 - Core — **модульний моноліт у стилі гексагональної архітектури** (ports & adapters) + CQRS-шина `@nestjs/cqrs` для міжмодульних викликів (query/command handlers). Доменні події пишуться в **transactional outbox** (`outbox_events`) у транзакції use case'а і публікуються релеєм у **RabbitMQ** (topic exchange `platform.events`). `EventBus` з `@nestjs/cqrs` для цього свідомо не використовується.
 - Файли (аудіо, обкладинки, аватари) — **AWS S3, публічні URL**; стрімінг — браузерний `<audio src="https://bucket.s3...">` напряму з S3 (бекенд аудіо не проксує).
 - ШІ — окремий сервіс **AI enrichment**: за подією `song.uploaded` транскрибує аудіо (Groq Whisper) і аналізує текст (Groq `gpt-oss-120b`: строфи з таймкодами, теги зі словника), результат повертає в Core подією `song.enriched`. `POST /song` на транскрипцію не чекає (див. §8).
 - Поведінкові дані сьогодні: лайки (toggle з **м'яким видаленням**, один рядок на пару), кожне прослуховування на `ended` — рядок у `listens` з `user_id` + атомарний інкремент `song.listens` (rate limit 1 раз на 30 с на пару користувач–пісня), доменні події `song.liked`/`song.unliked`/`playlist.song_added`/... і **події плеєра** `playback.*` (start, progress, pause/resume, seek, complete, skip з позицією, `play_id` і `source`) у RabbitMQ.
-- Відомі проблеми — §15; виправлені на етапі 2 позначені ✅.
+- **Analytics** будує з подій сесії прослуховування, неявні оцінки пар користувач–трек і профіль вподобань (вектор за словником тегів), публікує `profile.updated` (див. §8а).
+- Відомі проблеми — §15; виправлені позначені ✅.
 
 ---
 
@@ -546,6 +548,22 @@ erDiagram
 
 ---
 
+## 8а. Analytics: сесії, оцінки, профілі
+
+Сервіс `apps/analytics` (плаский NestJS, власна БД `analytics`, debug-порт 3002). Уся робота з даними — SQL (`common/analytics.repository.ts`); формули — чисті функції з unit-тестами.
+
+- **Вхід:** черга `analytics.events` (prefetch 1, DLQ, inbox) — `playback.*`, `song.liked`/`unliked`, `playlist.song_added`/`removed`, `song.uploaded`/`enriched`/`deleted`. Кожна подія в одній транзакції: `raw_events` + проєкції + позначка «профіль змінено».
+- **Каталог** (`songs`): автор, теги, версія словника, видалення — з подій, без доступу до БД Core.
+- **Сесії** (`listening_sessions`, `sessions/session.calculator.ts`): прослухано = зміна позиції між подіями, поки трек грав, але не більше, ніж пройшло часу (+2 с похибки); seek переносить точку відліку без зарахування стрибка; пауза не рахується; `skipped_early` — пропуск до 30 с. Події однієї сесії серіалізуються advisory-локом за `play_id` (рядок сесії створює перша подія, тож `FOR UPDATE` недостатньо).
+- **Явні сигнали** (`user_song_state`): стан лайка (стійкий до порядку подій), id плейлистів користувача з цим треком.
+- **Оцінка** (`scoring/score.calculator.ts`): лайк +3 / знятий −3; дослухано +2 за раз (≤ +6); частково +2 × частка (лише якщо не дослухано жодного разу); ранній пропуск −2 (≤ −6); плейлист +2 (≤ +4); власні й видалені пісні не враховуються. Ознаки для формули — одна SQL-агрегація на користувача.
+- **Профіль** (`profiles/profile.calculator.ts`): вектор за `TAG_VECTOR_KEYS` (36 позицій: настрої, теми, енергія, мова) = Σ оцінка × тег / Σ |оцінка|, від −1 до +1; топ-теги.
+- **Перерахунок** (`profiles/profile.job.ts`): раз на 60 с змінені користувачі (`changed_at > computed_at`); `profile.updated` через outbox, якщо будь-яке значення змінилось більше ніж на 0.01. `computed_at` = `changed_at`, з якого почався розрахунок, тож зміна під час розрахунку не губиться.
+- **Debug:** `GET /profiles/:userId` — профіль, оцінки по треках з ознаками, підсумок сесій.
+- **Обмеження:** немає backfill подій до появи черги; профіль — лише за тегами (ембединги — згодом, див. THESIS_CONTEXT).
+
+---
+
 ## 9. Плейлисти, лайки та інші соціальні фічі
 
 - **Плейлисти** (модуль `song`): створення з обкладинкою (обов'язкова), `is_private`; редагування (`PATCH`); перегляд усіх публічних, публічних конкретного юзера, одного плейлиста з треками; додавання і видалення треку (лише власник, без дублів); м'яке видалення. Немає: порядку треків, колаборативних плейлистів.
@@ -625,13 +643,13 @@ erDiagram
 | `song.user_id` | хто що завантажив | контент-атрибут автора |
 | `listens` | `(user_id, song_id, created_at)` кожного «дослухано до кінця» | ✅ історія прослуховувань на рівні користувача; rate limit 30 с на пару |
 | `song.listens` | загальна кількість «дослухано до кінця» по треку | денормалізований лічильник, атомарний інкремент |
+| Analytics: `listening_sessions`, `user_song_scores`, `user_profiles` | сесії з реально прослуханим часом, неявні оцінки, профілі вподобань | ✅ готові ознаки для Recommendations; `profile.updated` |
 | події в RabbitMQ (`platform.events`) | `user.registered`, `song.uploaded`, `song.deleted`, `song.liked`, `song.unliked`, `playlist.song_added`, `playlist.song_removed` з `user_id`, `occurred_at`, `correlation_id` | ✅ потік для майбутніх Analytics/Recommendations; копія — у `outbox_events` (опубліковані зберігаються 7 днів) |
 | `song.text`, `song.lyrics`, `song.tags` | текст, строфи, теги зі словника (AI enrichment) | ✅ контентні ознаки для content-based рекомендацій; теги — основа векторів треків |
 | `user_auth.token` оновлюється при логіні | непрямо — останній логін (без timestamp) | ❌ майже нічого |
 | JSON-логи Core (pino) | запити з `req.id`, статусом і часом | ❌ не персистяться; корисні для трасування подій за `correlation_id` |
 
 ### Чого немає (чесно)
-- Готових агрегатів (частка дослуханого, skip у перші 30 с, тривалість сесії) — сирі події `playback.*` є, рахувати їх буде Analytics.
 - Dislike / приховування треку (негативні сигнали зараз — `playback.skipped` і `song.unliked`).
 - Сесій, пристрою, user-agent, геолокації, часових поясів.
 - Пошукових запитів (пошук не використовується фронтом).
@@ -691,6 +709,7 @@ npm run dev                # Vite на http://localhost:5000
 - AI enrichment: валідація відповіді LLM (теги поза словником, кількість у групах, неіснуючі сегменти) і пайплайн (повторна подія, помилка транскрипції після ретраїв, помилка лише аналізу, `no_lyrics`, відсутній файл).
 - Core: `ApplySongEnrichmentUseCase` (оновлення пісні, `no_lyrics`, `failed`, повтор події, видалена пісня).
 - Core: валідація `POST /events` (типи, джерела, межі, `from_sec`/`to_sec` для seek), use case (envelope на подію, `user_id` з токена, час клієнта з межами, дублі).
+- Analytics: сесії (прослуханий час, пауза, seek, ранній пропуск, події не по порядку), формула оцінки й обмеження, профіль (нормування, негативні теги), інгестія (дублі, пізні теги, лайки, плейлисти).
 - Клієнт: Vitest (`npm test` в `apps/client`), unit-тести трекера: батчі, розбиття по 50, повтор невдалого батчу в тому ж порядку з тими самими `event_id`, відкидання при `4xx`, ліміт черги.
 - Лінтери: ESLint 9 + Prettier (Core), ESLint 9 (клієнт).
 
@@ -733,8 +752,8 @@ npm run dev                # Vite на http://localhost:5000
 ### 14.4 Бекенд: транскрипція як окремий AI-сервіс (реалізовано на етапі 3)
 Див. §8. Наступні кроки в тому самому сервісі: ембединги (рішення — у `docs/THESIS_CONTEXT.md`: зараз теги як вектор, ембединги згодом окремою колонкою), синхронізований текст у плеєрі за таймкодами `lyrics`.
 
-### 14.5 Дані для сервісу профілів уподобань (початкове наповнення)
-Для backfill можна напряму (read-only репліка / CDC, напр. Debezium) або через експорт взяти: `like_to_song`, `like_to_playlist`, `song_to_playlist ⋈ playlist.user_id`, `song.user_id`, `song.text`, `song.listens`. Історії прослуховувань немає — холодний старт.
+### 14.5 Профілі вподобань (реалізовано)
+Див. §8а. Профілі будуються з подій від моменту появи черги Analytics; історичний backfill не робиться.
 
 ### 14.6 Фронтенд: події плеєра (реалізовано)
 Див. §10 «Плеєр»: `player/usePlaybackTracking.ts` + `tracking/tracker.ts`. Наступне: `source: 'recommendations'` для рекомендацій, impressions (перегляди сторінок).

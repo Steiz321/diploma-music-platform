@@ -2,6 +2,7 @@ import { EventEnvelope } from './envelope';
 import { StructuredLyrics } from './lyrics';
 import { SongTags } from './tags';
 import { PlaybackPayload, PlaybackSeekedPayload } from './playback';
+import { ProfileUpdatedPayload } from './profile';
 import { TranscriptionResult } from './transcription';
 
 export const EVENT_TYPES = {
@@ -21,6 +22,7 @@ export const EVENT_TYPES = {
   playbackSeeked: 'playback.seeked',
   playbackCompleted: 'playback.completed',
   playbackSkipped: 'playback.skipped',
+  profileUpdated: 'profile.updated',
 } as const;
 
 /** Player events sent by the client to POST /events. */
@@ -115,6 +117,7 @@ export interface EventPayloadMap {
   'playback.seeked': PlaybackSeekedPayload;
   'playback.completed': PlaybackPayload;
   'playback.skipped': PlaybackPayload;
+  'profile.updated': ProfileUpdatedPayload;
 }
 
 /** envelope of a known event type, e.g. PlatformEvent<'song.liked'> */

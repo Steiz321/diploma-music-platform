@@ -1,5 +1,5 @@
-# Local development environment: postgres + minio + rabbitmq + core + ai-enrichment + client
-# (npm workspaces).
+# Local development environment: postgres + minio + rabbitmq + core + ai-enrichment + analytics
+# + client (npm workspaces).
 #   docker compose up            start everything (first run builds images)
 #   docker compose down -v       stop and wipe database / files
 # Optional overrides and secrets (GROQ_API_KEY) go to the root .env, see .env.example.
@@ -24,6 +24,7 @@ services:
       POSTGRES_DB: music
       # database per service: created by infra/postgres/init on a new volume
       AI_ENRICHMENT_DB_PASSWORD: ${AI_ENRICHMENT_DB_PASSWORD:-ai-enrichment}
+      ANALYTICS_DB_PASSWORD: ${ANALYTICS_DB_PASSWORD:-analytics}
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
@@ -208,6 +209,57 @@ services:
       core:
         condition: service_healthy
 
+  analytics:
+    # raw event log, listening sessions, implicit scores, preference profiles
+    # → profile.updated; own database, only RabbitMQ in and out
+    build:
+      context: .
+      dockerfile: apps/analytics/Dockerfile
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: analytics
+      DB_USERNAME: analytics
+      DB_PASSWORD: ${ANALYTICS_DB_PASSWORD:-analytics}
+      DB_SSL: 'false'
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-platform}:${RABBITMQ_PASSWORD:-platform-secret}@rabbitmq:5672
+      PROFILE_RECOMPUTE_INTERVAL_MS: ${PROFILE_RECOMPUTE_INTERVAL_MS:-60000}
+    ports:
+      # /health and the debug view GET /profiles/:userId from the host
+      - '${ANALYTICS_PORT:-3002}:3002'
+    healthcheck:
+      # GET /health: database + RabbitMQ (the image has no curl)
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3002/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    volumes:
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - ./apps/analytics:/app/apps/analytics
+      - ./packages:/app/packages
+      # container-only node_modules
+      - analytics-node-modules:/app/node_modules
+      - analytics-app-node-modules:/app/apps/analytics/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      # in development Core builds and watches the shared packages
+      core:
+        condition: service_healthy
+
   client:
     build:
       context: .
@@ -236,3 +288,5 @@ volumes:
   client-app-node-modules:
   ai-enrichment-node-modules:
   ai-enrichment-app-node-modules:
+  analytics-node-modules:
+  analytics-app-node-modules:
