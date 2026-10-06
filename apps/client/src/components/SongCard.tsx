@@ -28,6 +28,8 @@ interface SongCardProps {
   index?: number;
   /** where the card is shown, for player events */
   source: PlaybackSource;
+  /** a line under the title, e.g. why the song is recommended */
+  caption?: string;
 }
 
 const SongCard: React.FC<SongCardProps> = ({
@@ -35,6 +37,7 @@ const SongCard: React.FC<SongCardProps> = ({
   songs,
   index,
   source,
+  caption,
 }) => {
   const navigate = useNavigate();
   const { playSong, currentSong, isPlaying, pause, resume } = usePlayer();
@@ -156,6 +159,15 @@ const SongCard: React.FC<SongCardProps> = ({
             </IconButton>
           </Box>
         </Box>
+        {caption && (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", mb: 1 }}
+          >
+            {caption}
+          </Typography>
+        )}
         <Box
           sx={{
             display: "flex",

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Container, Typography, Box, Grid, Tabs, Tab } from "@mui/material";
 import songApi, { Song } from "../api/song";
+import RecommendedSongsSection from "../recommendations/RecommendedSongsSection";
 import playlistApi, { Playlist } from "../api/playlist";
 import SongCard from "../components/SongCard";
 import PlaylistCard from "../components/PlaylistCard";
@@ -98,6 +99,13 @@ const Feed: React.FC = () => {
         <Typography variant="h4" component="h1" gutterBottom>
           Discover
         </Typography>
+        <RecommendedSongsSection
+          title="For you"
+          fallbackTitle="Popular right now"
+          kind="for-you"
+          load={() => songApi.getRecommended(6)}
+        />
+
         <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
           <Tabs
             value={tabValue}

@@ -33,6 +33,22 @@ export interface Song {
   user: User;
 }
 
+export interface RecommendationReasons {
+  /** "group:value" tags of the track, e.g. "mood:melancholic" */
+  tags: string[];
+  similar_listeners: boolean;
+  popular: boolean;
+}
+
+export type RecommendedSong = Song & { reasons: RecommendationReasons | null };
+
+export interface RecommendedSongs {
+  songs: RecommendedSong[];
+  /** popular: the recommendations service is unavailable or has nothing yet */
+  source: "recommendations" | "popular";
+  cold_start: boolean;
+}
+
 export interface CreateSongRequest {
   title: string;
   artist: string;
@@ -44,6 +60,21 @@ const songApi = {
   getAllSongs: async (): Promise<Song[]> => {
     const response = await apiClient.get("/song");
     return response.data.data.songs;
+  },
+
+  /** "For you" (popular songs when there are no recommendations) */
+  getRecommended: async (limit = 6): Promise<RecommendedSongs> => {
+    const response = await apiClient.get("/song/recommended", {
+      params: { limit },
+    });
+    return response.data.data;
+  },
+
+  getSimilar: async (id: number, limit = 6): Promise<RecommendedSongs> => {
+    const response = await apiClient.get(`/song/${id}/similar`, {
+      params: { limit },
+    });
+    return response.data.data;
   },
 
   getSongById: async (id: number): Promise<Song> => {

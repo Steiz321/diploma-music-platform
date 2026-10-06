@@ -1,5 +1,5 @@
 # Local development environment: postgres + minio + rabbitmq + core + ai-enrichment + analytics
-# + client (npm workspaces).
+# + recommendations + client (npm workspaces).
 #   docker compose up            start everything (first run builds images)
 #   docker compose down -v       stop and wipe database / files
 # Optional overrides and secrets (GROQ_API_KEY) go to the root .env, see .env.example.
@@ -25,6 +25,7 @@ services:
       # database per service: created by infra/postgres/init on a new volume
       AI_ENRICHMENT_DB_PASSWORD: ${AI_ENRICHMENT_DB_PASSWORD:-ai-enrichment}
       ANALYTICS_DB_PASSWORD: ${ANALYTICS_DB_PASSWORD:-analytics}
+      RECOMMENDATIONS_DB_PASSWORD: ${RECOMMENDATIONS_DB_PASSWORD:-recommendations}
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
@@ -114,6 +115,9 @@ services:
       PUBLIC_FILES_BASE_URL: http://localhost:${MINIO_PORT:-9000}/music-files
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-platform}:${RABBITMQ_PASSWORD:-platform-secret}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # "For you" / "Similar tracks"; popular songs when it does not answer in time
+      RECOMMENDATIONS_URL: http://recommendations:3003
+      RECOMMENDATIONS_TIMEOUT_MS: ${RECOMMENDATIONS_TIMEOUT_MS:-800}
     ports:
       - '${SERVER_PORT:-3000}:3000'
     healthcheck:
@@ -262,6 +266,58 @@ services:
       core:
         condition: service_healthy
 
+  recommendations:
+    # hybrid ranking: tag vectors (pgvector) + similar listeners + popularity;
+    # own database, filled from events; HTTP API for Core only
+    build:
+      context: .
+      dockerfile: apps/recommendations/Dockerfile
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: recommendations
+      DB_USERNAME: recommendations
+      DB_PASSWORD: ${RECOMMENDATIONS_DB_PASSWORD:-recommendations}
+      DB_SSL: 'false'
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-platform}:${RABBITMQ_PASSWORD:-platform-secret}@rabbitmq:5672
+      RECOMMENDATION_WEIGHTS: ${RECOMMENDATION_WEIGHTS:-0.6,0.3,0.1}
+      SIMILAR_WEIGHTS: ${SIMILAR_WEIGHTS:-0.7,0.25,0.05}
+    ports:
+      # /health and the API from this machine (Core uses the internal network)
+      - '127.0.0.1:${RECOMMENDATIONS_PORT:-3003}:3003'
+    healthcheck:
+      # GET /health: database + RabbitMQ (the image has no curl)
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3003/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    volumes:
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - ./apps/recommendations:/app/apps/recommendations
+      - ./packages:/app/packages
+      # container-only node_modules
+      - recommendations-node-modules:/app/node_modules
+      - recommendations-app-node-modules:/app/apps/recommendations/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      # in development Core builds and watches the shared packages
+      core:
+        condition: service_healthy
+
   client:
     build:
       context: .
@@ -292,3 +348,5 @@ volumes:
   ai-enrichment-app-node-modules:
   analytics-node-modules:
   analytics-app-node-modules:
+  recommendations-node-modules:
+  recommendations-app-node-modules:

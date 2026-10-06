@@ -11,6 +11,15 @@ export interface SongRepository {
 
   getManyWhere(where: GetSongWhere): Promise<Song[]>;
 
+  /** not deleted songs with their author, in the order of the ids */
+  getByIds(ids: number[]): Promise<Song[]>;
+
+  /** most listened songs (fallback when recommendations are unavailable) */
+  getPopular(
+    limit: number,
+    exclude: { authorId?: number; songId?: number },
+  ): Promise<Song[]>;
+
   create(dto: SongCreateParams, transaction?: Transaction): Promise<Song>;
 
   update(

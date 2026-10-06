@@ -32,8 +32,9 @@ export interface RecomputeResult {
 /**
  * Batch recomputation instead of work on every event: events only mark a
  * user as changed; once per interval the changed users get their scores
- * (SQL aggregation + score formula) and profile rebuilt, and a noticeable
- * change is published as profile.updated through the outbox.
+ * (SQL aggregation + score formula) and profile rebuilt; the scores are
+ * published as scores.updated, and a noticeable profile change as
+ * profile.updated, both through the outbox.
  */
 @Injectable()
 export class ProfileJob
@@ -154,6 +155,23 @@ export class ProfileJob
           { transaction: t, aggregateType: 'user', aggregateId: userId },
         );
       }
+      // the scores themselves, for collaborative filtering in Recommendations
+      // (the score formula stays in one place)
+      await this.outbox.add(
+        createEvent(
+          PRODUCER,
+          EVENT_TYPES.scoresUpdated,
+          {
+            user_id: userId,
+            scores: scored
+              .filter((row) => row.score !== 0)
+              .map((row) => ({ song_id: row.song_id, score: row.score })),
+          },
+          userId,
+        ),
+        { transaction: t, aggregateType: 'user', aggregateId: userId },
+      );
+
       return publish;
     });
   }

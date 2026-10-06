@@ -31,6 +31,8 @@ import CreateListenForSongUseCase from './application/usecase/create-listen-for-
 import DeleteSongUseCase from './application/usecase/delete-song.usecase';
 import DeletePlaylistUseCase from './application/usecase/delete-playlist.usecase';
 import ApplySongEnrichmentUseCase from './application/usecase/apply-song-enrichment.usecase';
+import GetRecommendedSongsUseCase from './application/usecase/get-recommended-songs.usecase';
+import GetSimilarSongsUseCase from './application/usecase/get-similar-songs.usecase';
 import { SongEnrichmentConsumer } from './primary-adapters/song-enrichment.consumer';
 import UpdatePlaylistUseCase from './application/usecase/update-playlist.usecase';
 import RemoveSongFromPlaylistUseCase from './application/usecase/remove-song-from-playlist.usecase';
@@ -56,6 +58,8 @@ const UseCases = [
   UpdatePlaylistUseCase,
   RemoveSongFromPlaylistUseCase,
   ApplySongEnrichmentUseCase,
+  GetRecommendedSongsUseCase,
+  GetSimilarSongsUseCase,
 ];
 
 @Module({

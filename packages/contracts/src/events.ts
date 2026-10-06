@@ -3,6 +3,7 @@ import { StructuredLyrics } from './lyrics';
 import { SongTags } from './tags';
 import { PlaybackPayload, PlaybackSeekedPayload } from './playback';
 import { ProfileUpdatedPayload } from './profile';
+import { ScoresUpdatedPayload } from './recommendations';
 import { TranscriptionResult } from './transcription';
 
 export const EVENT_TYPES = {
@@ -23,6 +24,7 @@ export const EVENT_TYPES = {
   playbackCompleted: 'playback.completed',
   playbackSkipped: 'playback.skipped',
   profileUpdated: 'profile.updated',
+  scoresUpdated: 'scores.updated',
 } as const;
 
 /** Player events sent by the client to POST /events. */
@@ -118,6 +120,7 @@ export interface EventPayloadMap {
   'playback.completed': PlaybackPayload;
   'playback.skipped': PlaybackPayload;
   'profile.updated': ProfileUpdatedPayload;
+  'scores.updated': ScoresUpdatedPayload;
 }
 
 /** envelope of a known event type, e.g. PlatformEvent<'song.liked'> */
