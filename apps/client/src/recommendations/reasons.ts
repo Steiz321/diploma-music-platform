@@ -31,5 +31,9 @@ export const describeReasons = (
       ? "Liked by listeners with a similar taste"
       : "Liked by the same listeners";
   }
-  return "Popular right now";
+  if (reasons.popular) {
+    return "Popular right now";
+  }
+  // ranked by tags that explain nothing on their own (language, weak matches)
+  return kind === "for-you" ? "Something new to try" : "You might also like";
 };

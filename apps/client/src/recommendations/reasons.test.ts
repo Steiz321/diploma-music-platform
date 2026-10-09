@@ -30,6 +30,11 @@ describe("describeReasons", () => {
     );
     expect(describeReasons(null, "similar")).toBe("Popular right now");
   });
+
+  it("does not call a track popular without a reason to", () => {
+    expect(describeReasons(reasons(), "for-you")).toBe("Something new to try");
+    expect(describeReasons(reasons(), "similar")).toBe("You might also like");
+  });
 });
 
 describe("tagLabel", () => {
