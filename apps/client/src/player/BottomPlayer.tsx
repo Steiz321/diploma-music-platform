@@ -1,16 +1,21 @@
 import React, { useRef, useEffect, useState } from "react";
-import { Box, Typography, IconButton, Slider } from "@mui/material";
+import { Box, Typography, IconButton, Slider, Button, Link } from "@mui/material";
 import {
   PlayArrow,
   Pause,
   Favorite,
+  FavoriteBorder,
   SkipNext,
   SkipPrevious,
+  Notes,
+  VolumeUp,
+  VolumeOff,
 } from "@mui/icons-material";
-import { usePlayer } from "./PlayerContext";
+import { Link as RouterLink } from "react-router-dom";
+import { usePlayer, usePlayerProgress } from "./usePlayer";
 import { usePlaybackTracking } from "./usePlaybackTracking";
 import songApi from "../api/song";
-import { useNavigate } from "react-router-dom";
+import { coverColor, tokens } from "../theme/tokens";
 
 const BottomPlayer: React.FC = () => {
   const {
@@ -24,7 +29,10 @@ const BottomPlayer: React.FC = () => {
     hasPrev,
     playId,
     source,
+    setProgress,
+    registerSeek,
   } = usePlayer();
+  const { currentTime, duration } = usePlayerProgress();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const tracking = usePlaybackTracking({
     audioRef,
@@ -32,10 +40,14 @@ const BottomPlayer: React.FC = () => {
     songId: currentSong?.id ?? null,
     source,
   });
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [isLiking, setIsLiking] = useState(false);
-  const navigate = useNavigate();
+  // like toggled in the player; the song object itself is not refetched
+  const [likedOverride, setLikedOverride] = useState<{
+    songId: number;
+    liked: boolean;
+  } | null>(null);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -47,26 +59,52 @@ const BottomPlayer: React.FC = () => {
     }
   }, [isPlaying, currentSong]);
 
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+      audioRef.current.muted = muted;
+    }
+  }, [volume, muted, currentSong]);
+
   const handleTimeUpdate = () => {
     if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
+      setProgress(audioRef.current.currentTime);
     }
     tracking.onTimeUpdate();
   };
 
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
-      setDuration(audioRef.current.duration);
+      setProgress(audioRef.current.currentTime, audioRef.current.duration);
     }
   };
 
-  const handleSliderChange = (_: any, value: number | number[]) => {
+  const handleSliderChange = (_: Event, value: number | number[]) => {
     if (audioRef.current && typeof value === "number") {
       tracking.onSeekChange();
       audioRef.current.currentTime = value;
-      setCurrentTime(value);
+      setProgress(value);
     }
   };
+
+  // seek requested from outside the player (a click on a lyrics line):
+  // reported like one drag of the slider
+  const seekTo = (seconds: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    tracking.onSeekChange();
+    audio.currentTime = seconds;
+    setProgress(seconds);
+    tracking.onSeekCommitted(seconds);
+  };
+  const seekToRef = useRef(seekTo);
+  useEffect(() => {
+    seekToRef.current = seekTo;
+  });
+  useEffect(() => {
+    registerSeek((seconds) => seekToRef.current(seconds));
+    return () => registerSeek(null);
+  }, [registerSeek]);
 
   const handleSliderCommitted = (
     _: React.SyntheticEvent | Event,
@@ -77,12 +115,26 @@ const BottomPlayer: React.FC = () => {
     }
   };
 
+  const handleVolumeChange = (_: Event, value: number | number[]) => {
+    if (typeof value === "number") {
+      setVolume(value);
+      setMuted(value === 0);
+    }
+  };
+
+  const isLiked =
+    currentSong !== null &&
+    (likedOverride?.songId === currentSong.id
+      ? likedOverride.liked
+      : currentSong.is_liked);
+
   const handleLike = async () => {
     if (!currentSong || isLiking) return;
 
     try {
       setIsLiking(true);
       await songApi.likeSong(currentSong.id);
+      setLikedOverride({ songId: currentSong.id, liked: !isLiked });
     } catch (error) {
       console.error("Error liking song:", error);
     } finally {
@@ -104,43 +156,191 @@ const BottomPlayer: React.FC = () => {
 
   if (!currentSong) return null;
 
+  const songPath = `/song/${currentSong.id}`;
+  // streams without a known length report Infinity
+  const seekMax = Number.isFinite(duration) ? duration : 0;
+
   return (
     <Box
+      component="footer"
+      aria-label="Player"
       sx={{
-        position: "fixed",
-        left: 0,
-        right: 0,
-        bottom: 0,
-        bgcolor: "background.paper",
-        boxShadow: 3,
-        px: 3,
-        py: 2,
+        flex: "none",
+        zIndex: (theme) => theme.zIndex.appBar,
         display: "flex",
+        flexWrap: "wrap",
         alignItems: "center",
-        zIndex: 1300,
+        columnGap: 4,
+        rowGap: 1.5,
+        px: "clamp(16px, 3vw, 28px)",
+        py: 1.75,
+        bgcolor: tokens.player,
+        borderTop: 1,
+        borderColor: "divider",
       }}
     >
+      {/* now playing: cover, title / artist, like */}
       <Box
-        sx={{ flex: 1, minWidth: 0, cursor: "pointer" }}
-        onClick={() => navigate(`/song/${currentSong.id}`)}
+        sx={{
+          flex: "1 1 240px",
+          minWidth: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 1.75,
+        }}
       >
-        <Typography variant="subtitle1" noWrap>
-          {currentSong.name}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" noWrap>
-          {currentSong.author}
-        </Typography>
+        <Box
+          component={RouterLink}
+          to={songPath}
+          aria-hidden
+          tabIndex={-1}
+          sx={{
+            width: 56,
+            height: 56,
+            flex: "none",
+            borderRadius: "10px",
+            bgcolor: coverColor(currentSong.id),
+            backgroundImage: currentSong.cover_url
+              ? `url(${currentSong.cover_url})`
+              : undefined,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            boxShadow: `0 0 0 3px ${tokens.accent}33`,
+          }}
+        />
+        <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
+          <Link
+            component={RouterLink}
+            to={songPath}
+            noWrap
+            sx={{ fontWeight: 600, fontSize: 15 }}
+          >
+            {currentSong.name}
+          </Link>
+          <Typography variant="body2" color="text.secondary" noWrap>
+            {currentSong.author}
+          </Typography>
+        </Box>
+        <IconButton
+          onClick={handleLike}
+          disabled={isLiking}
+          aria-label={isLiked ? "Unlike" : "Like"}
+          sx={{ color: isLiked ? "primary.main" : "text.secondary" }}
+        >
+          {isLiked ? <Favorite /> : <FavoriteBorder />}
+        </IconButton>
       </Box>
-      <IconButton onClick={playPrev} disabled={!hasPrev} sx={{ ml: 2 }}>
-        <SkipPrevious />
-      </IconButton>
-      <IconButton onClick={isPlaying ? pause : resume}>
-        {isPlaying ? <Pause /> : <PlayArrow />}
-      </IconButton>
-      {/* a skip is the negative signal for recommendations */}
-      <IconButton onClick={playNext} disabled={!hasNext} sx={{ mr: 2 }}>
-        <SkipNext />
-      </IconButton>
+
+      {/* transport and progress */}
+      <Box
+        sx={{
+          flex: "2 1 360px",
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 0.25,
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <IconButton
+            onClick={playPrev}
+            disabled={!hasPrev}
+            aria-label="Previous"
+            sx={{ color: tokens.textSecondary }}
+          >
+            <SkipPrevious />
+          </IconButton>
+          <IconButton
+            onClick={isPlaying ? pause : resume}
+            aria-label={isPlaying ? "Pause" : "Play"}
+            sx={{
+              width: 48,
+              height: 48,
+              bgcolor: tokens.text,
+              color: tokens.bg,
+              "&:hover": { bgcolor: tokens.textSecondary },
+            }}
+          >
+            {isPlaying ? <Pause /> : <PlayArrow />}
+          </IconButton>
+          {/* a skip is the negative signal for recommendations */}
+          <IconButton
+            onClick={playNext}
+            disabled={!hasNext}
+            aria-label="Next"
+            sx={{ color: tokens.textSecondary }}
+          >
+            <SkipNext />
+          </IconButton>
+        </Box>
+        <Box
+          sx={{
+            width: "100%",
+            maxWidth: 560,
+            display: "flex",
+            alignItems: "center",
+            gap: 1.5,
+            fontSize: 12,
+            color: tokens.subtle,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          <span>{formatTime(currentTime)}</span>
+          <Slider
+            min={0}
+            max={seekMax}
+            value={Math.min(currentTime, seekMax)}
+            onChange={handleSliderChange}
+            onChangeCommitted={handleSliderCommitted}
+            aria-label="Seek"
+            size="small"
+            sx={{ flex: 1 }}
+          />
+          <span>{formatTime(seekMax)}</span>
+        </Box>
+      </Box>
+
+      {/* lyrics and volume */}
+      <Box
+        sx={{
+          flex: "1 1 240px",
+          minWidth: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: 1,
+        }}
+      >
+        <Button
+          component={RouterLink}
+          to={songPath}
+          variant="outlined"
+          size="small"
+          startIcon={<Notes fontSize="small" />}
+          sx={{ height: 40 }}
+        >
+          Lyrics
+        </Button>
+        <IconButton
+          onClick={() => setMuted((m) => !m)}
+          aria-label={muted ? "Unmute" : "Mute"}
+          sx={{ color: tokens.textSecondary }}
+        >
+          {muted ? <VolumeOff /> : <VolumeUp />}
+        </IconButton>
+        <Slider
+          min={0}
+          max={1}
+          step={0.01}
+          value={muted ? 0 : volume}
+          onChange={handleVolumeChange}
+          aria-label="Volume"
+          size="small"
+          sx={{ width: 96, display: { xs: "none", sm: "block" } }}
+        />
+      </Box>
+
       <audio
         ref={audioRef}
         src={currentSong.audio}
@@ -152,30 +352,12 @@ const BottomPlayer: React.FC = () => {
         onPlaying={tracking.onPlaying}
         onPause={tracking.onPause}
       />
-      <Slider
-        min={0}
-        max={duration}
-        value={currentTime}
-        onChange={handleSliderChange}
-        onChangeCommitted={handleSliderCommitted}
-        sx={{ width: 200, mx: 2 }}
-      />
-      <Typography variant="caption" sx={{ minWidth: 50, textAlign: "right" }}>
-        {formatTime(currentTime)} / {formatTime(duration)}
-      </Typography>
-      <IconButton
-        sx={{ ml: 2 }}
-        onClick={handleLike}
-        disabled={isLiking}
-        color={currentSong.is_liked ? "error" : "default"}
-      >
-        <Favorite />
-      </IconButton>
     </Box>
   );
 };
 
 function formatTime(time: number) {
+  if (!Number.isFinite(time)) return "0:00";
   const minutes = Math.floor(time / 60);
   const seconds = Math.floor(time % 60)
     .toString()

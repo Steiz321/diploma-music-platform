@@ -1,32 +1,9 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import authApi, { LoginRequest } from "../api/auth";
-import {
-  Box,
-  Button,
-  Container,
-  TextField,
-  Typography,
-  Paper,
-} from "@mui/material";
-import { styled } from "@mui/material/styles";
-
-const StyledPaper = styled(Paper)(({ theme }) => ({
-  marginTop: theme.spacing(8),
-  padding: theme.spacing(4),
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-}));
-
-const StyledForm = styled("form")(({ theme }) => ({
-  width: "100%",
-  marginTop: theme.spacing(1),
-}));
-
-const StyledButton = styled(Button)(({ theme }) => ({
-  margin: theme.spacing(3, 0, 2),
-}));
+import { Box, Button, Link, TextField, Typography } from "@mui/material";
+import AuthCard from "../components/AuthCard";
+import { tokens } from "../theme/tokens";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -99,62 +76,63 @@ const Login: React.FC = () => {
   };
 
   return (
-    <Container component="main" maxWidth="xs">
-      <StyledPaper elevation={6}>
-        <Typography component="h1" variant="h5">
-          Sign In
-        </Typography>
-        <StyledForm onSubmit={handleSubmit}>
-          <TextField
-            variant="outlined"
-            margin="normal"
-            required
-            fullWidth
-            id="email"
-            label="Email Address"
-            name="email"
-            autoComplete="email"
-            autoFocus
-            value={formData.email}
-            onChange={handleChange}
-            error={!!errors.email}
-            helperText={errors.email}
-          />
-          <TextField
-            variant="outlined"
-            margin="normal"
-            required
-            fullWidth
-            name="password"
-            label="Password"
-            type="password"
-            id="password"
-            autoComplete="current-password"
-            value={formData.password}
-            onChange={handleChange}
-            error={!!errors.password}
-            helperText={errors.password}
-          />
-          <StyledButton
-            type="submit"
-            fullWidth
-            variant="contained"
-            color="primary"
-            disabled={isLoading}
-          >
-            {isLoading ? "Signing in..." : "Sign In"}
-          </StyledButton>
-          <Box mt={2}>
-            <Typography variant="body2" align="center">
-              Don't have an account?{" "}
-              <Button color="primary" onClick={() => navigate("/register")}>
-                Sign Up
-              </Button>
-            </Typography>
-          </Box>
-        </StyledForm>
-      </StyledPaper>
-    </Container>
+    <AuthCard title="Sign in" subtitle="Welcome back to Musilizer.">
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        noValidate
+        sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+      >
+        <TextField
+          variant="outlined"
+          required
+          fullWidth
+          id="email"
+          label="Email address"
+          name="email"
+          type="email"
+          autoComplete="email"
+          autoFocus
+          value={formData.email}
+          onChange={handleChange}
+          error={!!errors.email}
+          helperText={errors.email}
+        />
+        <TextField
+          variant="outlined"
+          required
+          fullWidth
+          name="password"
+          label="Password"
+          type="password"
+          id="password"
+          autoComplete="current-password"
+          value={formData.password}
+          onChange={handleChange}
+          error={!!errors.password}
+          helperText={errors.password}
+        />
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          disabled={isLoading}
+          sx={{ height: 48, mt: 1, fontSize: 15 }}
+        >
+          {isLoading ? "Signing in..." : "Sign in"}
+        </Button>
+      </Box>
+      <Typography variant="body2" align="center" sx={{ color: tokens.muted }}>
+        Don't have an account?{" "}
+        <Link
+          component={RouterLink}
+          to="/register"
+          sx={{ "&, &:visited": { color: "primary.main" }, fontWeight: 600 }}
+        >
+          Sign up
+        </Link>
+      </Typography>
+    </AuthCard>
   );
 };
 

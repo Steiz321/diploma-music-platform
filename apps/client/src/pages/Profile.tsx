@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import {
-  Container,
   Typography,
   Box,
   Avatar,
-  Paper,
-  Divider,
   Tabs,
   Tab,
+  CircularProgress,
 } from "@mui/material";
-import { VerifiedUser } from "@mui/icons-material";
+import { Verified } from "@mui/icons-material";
 import userApi, { User } from "../api/user";
 import SongCard from "../components/SongCard";
 import PlaylistCard from "../components/PlaylistCard";
 import { Playlist } from "../api/playlist";
+import { coverColor, tokens } from "../theme/tokens";
+
+const gridSx = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+  gap: 2.5,
+} as const;
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -29,8 +34,8 @@ function TabPanel(props: TabPanelProps) {
     <div
       role="tabpanel"
       hidden={value !== index}
-      id={`simple-tabpanel-${index}`}
-      aria-labelledby={`simple-tab-${index}`}
+      id={`profile-tabpanel-${index}`}
+      aria-labelledby={`profile-tab-${index}`}
       {...other}
     >
       {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
@@ -94,67 +99,118 @@ const Profile: React.FC = () => {
     fetchUserData();
   }, [id, location.pathname, navigate]);
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
   if (loading) {
     return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography>Loading...</Typography>
-        </Box>
-      </Container>
+      <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+        <CircularProgress aria-label="Loading profile" />
+      </Box>
     );
   }
 
   if (error || !user) {
-    return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography color="error">{error || "User not found"}</Typography>
-        </Box>
-      </Container>
-    );
+    return <Typography color="error">{error || "User not found"}</Typography>;
   }
 
   const displaySongs = Array.isArray(user.songs) ? user.songs : [];
+  const counts = [
+    `${displaySongs.length} ${displaySongs.length === 1 ? "song" : "songs"}`,
+    `${playlists.length} ${playlists.length === 1 ? "playlist" : "playlists"}`,
+  ];
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: 4 }}>
-        <Paper sx={{ p: 4, mb: 4 }}>
-          <Box sx={{ display: "flex", alignItems: "center", mb: 3 }}>
-            <Avatar
-              src={user.avatar || undefined}
-              sx={{ width: 100, height: 100, mr: 3 }}
-            />
-            <Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <Typography variant="h4" component="h1">
-                  {user.username}
-                </Typography>
-                {user.is_verified && <VerifiedUser color="primary" />}
-              </Box>
-              {user.description && (
-                <Typography color="text.secondary" sx={{ mt: 1 }}>
-                  {user.description}
-                </Typography>
-              )}
-            </Box>
-          </Box>
-        </Paper>
-
-        <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-          <Tabs
-            value={tabValue}
-            onChange={handleTabChange}
-            aria-label="profile content tabs"
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <Box
+        component="header"
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
+          alignItems: { xs: "flex-start", sm: "center" },
+          gap: { xs: 2.5, sm: 4 },
+          p: { xs: 2.5, sm: 4 },
+          borderRadius: "24px",
+          bgcolor: tokens.heroBg,
+          border: `1px solid ${tokens.heroRing}`,
+        }}
+      >
+        <Avatar
+          src={user.avatar || undefined}
+          alt=""
+          sx={{
+            width: 112,
+            height: 112,
+            fontSize: 44,
+            fontWeight: 700,
+            bgcolor: coverColor(user.id),
+            color: tokens.text,
+            boxShadow: `0 0 0 6px ${tokens.heroRing}`,
+          }}
+        >
+          {user.username.charAt(0).toUpperCase()}
+        </Avatar>
+        <Box
+          sx={{
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
+          }}
+        >
+          <Typography
+            component="span"
+            sx={{
+              fontSize: 12,
+              fontWeight: 600,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: tokens.heroSub,
+            }}
           >
-            <Tab label={`Songs (${displaySongs.length})`} />
-            <Tab label={`Playlists (${playlists.length})`} />
-          </Tabs>
+            Profile
+          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography
+              variant="h2"
+              component="h1"
+              sx={{ overflowWrap: "anywhere" }}
+            >
+              {user.username}
+            </Typography>
+            {user.is_verified && (
+              <Verified color="primary" titleAccess="Verified" />
+            )}
+          </Box>
+          {user.description && (
+            <Typography sx={{ color: tokens.heroSub, maxWidth: "60ch" }}>
+              {user.description}
+            </Typography>
+          )}
+          <Typography sx={{ color: tokens.heroSub, fontSize: 14 }}>
+            {counts.join(" · ")}
+          </Typography>
         </Box>
+      </Box>
+
+      <Box>
+        <Tabs
+          value={tabValue}
+          onChange={handleTabChange}
+          aria-label="Profile content"
+        >
+          <Tab
+            label={`Songs (${displaySongs.length})`}
+            id="profile-tab-0"
+            aria-controls="profile-tabpanel-0"
+          />
+          <Tab
+            label={`Playlists (${playlists.length})`}
+            id="profile-tab-1"
+            aria-controls="profile-tabpanel-1"
+          />
+        </Tabs>
 
         <TabPanel value={tabValue} index={0}>
           {displaySongs.length === 0 ? (
@@ -162,17 +218,7 @@ const Profile: React.FC = () => {
               No songs uploaded yet.
             </Typography>
           ) : (
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: "1fr",
-                  sm: "1fr 1fr",
-                  md: "1fr 1fr 1fr",
-                },
-                gap: 3,
-              }}
-            >
+            <Box sx={gridSx}>
               {displaySongs.map((song, idx) => (
                 <SongCard
                   key={song.id}
@@ -192,17 +238,7 @@ const Profile: React.FC = () => {
               No playlists created yet.
             </Typography>
           ) : (
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: "1fr",
-                  sm: "1fr 1fr",
-                  md: "1fr 1fr 1fr",
-                },
-                gap: 3,
-              }}
-            >
+            <Box sx={gridSx}>
               {playlists.map((playlist) => (
                 <PlaylistCard key={playlist.id} playlist={playlist} />
               ))}
@@ -210,7 +246,7 @@ const Profile: React.FC = () => {
           )}
         </TabPanel>
       </Box>
-    </Container>
+    </Box>
   );
 };
 

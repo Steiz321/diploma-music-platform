@@ -4,18 +4,18 @@ import {
   DialogTitle,
   DialogContent,
   List,
-  ListItem,
+  ListItemButton,
   ListItemText,
-  ListItemAvatar,
-  Avatar,
   Typography,
   CircularProgress,
   Box,
   Alert,
   IconButton,
 } from "@mui/material";
-import { QueueMusic, Close } from "@mui/icons-material";
+import { Close } from "@mui/icons-material";
 import playlistApi, { Playlist } from "../api/playlist";
+import CoverArt from "./CoverArt";
+import { tokens } from "../theme/tokens";
 
 interface AddToPlaylistDialogProps {
   open: boolean;
@@ -77,83 +77,80 @@ const AddToPlaylistDialog: React.FC<AddToPlaylistDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6" color="text.primary">
-            Add to Playlist
-          </Typography>
-          <IconButton onClick={onClose} size="small">
-            <Close />
-          </IconButton>
-        </Box>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="xs"
+      fullWidth
+      aria-labelledby="add-to-playlist-title"
+    >
+      <DialogTitle
+        id="add-to-playlist-title"
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1,
+          pr: 1.5,
+        }}
+      >
+        <Typography variant="h6" component="span">
+          Add to playlist
+        </Typography>
+        <IconButton
+          onClick={onClose}
+          aria-label="Close"
+          sx={{ width: 44, height: 44, color: tokens.muted }}
+        >
+          <Close />
+        </IconButton>
       </DialogTitle>
-      <DialogContent sx={{ color: "text.primary" }}>
+      <DialogContent sx={{ px: 1.5, pb: 2 }}>
         {loading ? (
-          <Box display="flex" justifyContent="center" p={3}>
-            <CircularProgress />
+          <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+            <CircularProgress aria-label="Loading playlists" />
           </Box>
         ) : error ? (
-          <Alert severity="error">{error}</Alert>
+          <Alert severity="error" sx={{ mx: 1.5 }}>
+            {error}
+          </Alert>
         ) : playlists.length === 0 ? (
-          <Typography color="text.primary" align="center">
+          <Typography color="text.secondary" align="center" sx={{ p: 2 }}>
             You don't have any playlists yet
           </Typography>
         ) : (
           <>
             {successMessage && (
-              <Alert severity="success" sx={{ mb: 2 }}>
+              <Alert severity="success" sx={{ mx: 1.5, mb: 1 }} role="status">
                 {successMessage}
               </Alert>
             )}
-            <List>
+            <List disablePadding>
               {playlists.map((playlist) => (
-                <ListItem
+                <ListItemButton
                   key={playlist.id}
-                  component="button"
                   onClick={() => handleAddToPlaylist(playlist)}
-                  sx={{
-                    cursor: "pointer",
-                    "&:hover": {
-                      bgcolor: "action.hover",
-                    },
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "none",
-                    padding: 2,
-                  }}
                   disabled={addingTo === playlist.id}
+                  sx={{ gap: 1.75, py: 1, px: 1.5 }}
                 >
-                  <ListItemAvatar>
-                    {playlist.cover_url ? (
-                      <Avatar
-                        src={playlist.cover_url}
-                        alt={playlist.title}
-                        variant="rounded"
-                      />
-                    ) : (
-                      <Avatar variant="rounded">
-                        <QueueMusic />
-                      </Avatar>
-                    )}
-                  </ListItemAvatar>
+                  <CoverArt
+                    id={playlist.id}
+                    src={playlist.cover_url}
+                    ring={4}
+                    sx={{ width: 44, borderRadius: "8px" }}
+                  />
                   <ListItemText
-                    primary={
-                      <Typography color="text.primary">
-                        {playlist.title}
-                      </Typography>
-                    }
-                    secondary={
-                      <Typography color="text.secondary">
-                        {playlist.songs_count} songs
-                      </Typography>
-                    }
+                    primary={playlist.title}
+                    secondary={`${playlist.songs_count} songs`}
+                    slotProps={{
+                      primary: { sx: { color: tokens.text, fontWeight: 600 } },
+                      secondary: { sx: { color: tokens.muted, fontSize: 13 } },
+                    }}
                   />
                   {addingTo === playlist.id && (
-                    <CircularProgress size={24} sx={{ ml: 1 }} />
+                    <CircularProgress size={20} aria-label="Adding" />
                   )}
-                </ListItem>
+                </ListItemButton>
               ))}
             </List>
           </>
