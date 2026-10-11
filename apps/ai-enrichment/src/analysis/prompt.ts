@@ -1,5 +1,7 @@
-import { TAG_LIMITS } from '@platform/contracts';
+import { TAG_LIMITS, TAG_VOCABULARY, VERSE_KINDS } from '@platform/contracts';
 import { AnalysisInput } from './analyzer';
+
+const list = (values: readonly string[]) => values.join(', ');
 
 export const SYSTEM_PROMPT = `You analyse song lyrics transcribed by Whisper.
 
@@ -7,7 +9,7 @@ Input: the song title and the numbered Whisper segments (i) with timings in
 seconds and quality hints (avg_logprob, no_speech_prob).
 
 1. Structure. Group the lyric lines into verses and set each verse kind
-   (verse, chorus, bridge, intro, outro, other). A repeated block is usually
+   (${list(VERSE_KINDS)}). A repeated block is usually
    the chorus. Every line refers to the segment it comes from by "segment"
    (the i of the input); a segment may be split into several lines.
 2. Clean up. Leave out Whisper artifacts: music symbols like "🎵", captions
@@ -16,7 +18,11 @@ seconds and quality hints (avg_logprob, no_speech_prob).
    "you" at the end). Keep the original language and wording: do not
    translate, fix only obvious misspellings.
 3. Tags. Describe what the lyrics are about: ${TAG_LIMITS.mood.min}-${TAG_LIMITS.mood.max} moods,
-   ${TAG_LIMITS.topics.min}-${TAG_LIMITS.topics.max} topics, one energy level. Use only the allowed values.
+   ${TAG_LIMITS.topics.min}-${TAG_LIMITS.topics.max} topics, one energy level. Use only these values,
+   never your own words:
+   mood: ${list(TAG_VOCABULARY.mood)}
+   topics: ${list(TAG_VOCABULARY.topics)}
+   energy: ${list(TAG_VOCABULARY.energy)}
 4. instrumental = true when there are no real lyrics (only artifacts); then
    return an empty verses list.`;
 
