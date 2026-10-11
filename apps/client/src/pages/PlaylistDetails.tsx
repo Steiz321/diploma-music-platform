@@ -31,8 +31,8 @@ import {
   Person,
 } from "@mui/icons-material";
 import playlistApi, { Playlist } from "../api/playlist";
-import songApi from "../api/song";
 import { usePlayer } from "../player/usePlayer";
+import { useLikes } from "../likes/useSongLike";
 import type { PlayerSong } from "../player/usePlayer";
 import BackButton from "../components/BackButton";
 import CoverArt from "../components/CoverArt";
@@ -66,9 +66,7 @@ const PlaylistDetails: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const { currentSong, isPlaying, playSong, pause, resume, source } =
     usePlayer();
-  const [likingStates, setLikingStates] = useState<{ [key: number]: boolean }>(
-    {}
-  );
+  const likes = useLikes();
   const [isLiking, setIsLiking] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -146,29 +144,6 @@ const PlaylistDetails: React.FC = () => {
       }
     } else if (songs.length > 0) {
       handlePlayPause(songs[0], 0);
-    }
-  };
-
-  const handleLike = async (song: PlaylistSong) => {
-    if (likingStates[song.id]) return;
-
-    try {
-      setLikingStates((prev) => ({ ...prev, [song.id]: true }));
-      await songApi.likeSong(song.id);
-      setPlaylist((prev) =>
-        prev
-          ? {
-              ...prev,
-              songs: prev.songs.map((s) =>
-                s.id === song.id ? { ...s, is_liked: !s.is_liked } : s
-              ),
-            }
-          : null
-      );
-    } catch (error) {
-      console.error("Error liking song:", error);
-    } finally {
-      setLikingStates((prev) => ({ ...prev, [song.id]: false }));
     }
   };
 
@@ -459,6 +434,7 @@ const PlaylistDetails: React.FC = () => {
             {songs.map((song, idx) => {
               const isCurrent = currentSong?.id === song.id;
               const showPause = isCurrent && isPlaying;
+              const songLiked = likes.isLiked(song.id, song.is_liked);
               return (
                 <Box
                   component="li"
@@ -557,19 +533,19 @@ const PlaylistDetails: React.FC = () => {
                     </Tooltip>
                   )}
                   <IconButton
-                    onClick={() => handleLike(song)}
-                    disabled={likingStates[song.id]}
+                    onClick={() => likes.toggle(song.id, song.is_liked)}
+                    disabled={likes.isLiking(song.id)}
                     aria-label={
-                      song.is_liked ? `Unlike ${song.name}` : `Like ${song.name}`
+                      songLiked ? `Unlike ${song.name}` : `Like ${song.name}`
                     }
-                    aria-pressed={song.is_liked}
+                    aria-pressed={songLiked}
                     sx={{
                       width: 44,
                       height: 44,
-                      color: song.is_liked ? "primary.main" : tokens.subtle,
+                      color: songLiked ? "primary.main" : tokens.subtle,
                     }}
                   >
-                    {song.is_liked ? (
+                    {songLiked ? (
                       <Favorite fontSize="small" />
                     ) : (
                       <FavoriteBorder fontSize="small" />

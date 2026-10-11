@@ -14,6 +14,7 @@ import {
 import { Link as RouterLink } from "react-router-dom";
 import { usePlayer, usePlayerProgress } from "./usePlayer";
 import { usePlaybackTracking } from "./usePlaybackTracking";
+import { useSongLike } from "../likes/useSongLike";
 import songApi from "../api/song";
 import { coverColor, tokens } from "../theme/tokens";
 
@@ -40,12 +41,13 @@ const BottomPlayer: React.FC = () => {
     songId: currentSong?.id ?? null,
     source,
   });
-  const [isLiking, setIsLiking] = useState(false);
-  // like toggled in the player; the song object itself is not refetched
-  const [likedOverride, setLikedOverride] = useState<{
-    songId: number;
-    liked: boolean;
-  } | null>(null);
+  // the queued song is a copy taken when it started; the store has the
+  // likes toggled anywhere since
+  const {
+    isLiked,
+    isLiking,
+    toggle: handleLike,
+  } = useSongLike(currentSong?.id ?? null, currentSong?.is_liked ?? false);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
 
@@ -119,26 +121,6 @@ const BottomPlayer: React.FC = () => {
     if (typeof value === "number") {
       setVolume(value);
       setMuted(value === 0);
-    }
-  };
-
-  const isLiked =
-    currentSong !== null &&
-    (likedOverride?.songId === currentSong.id
-      ? likedOverride.liked
-      : currentSong.is_liked);
-
-  const handleLike = async () => {
-    if (!currentSong || isLiking) return;
-
-    try {
-      setIsLiking(true);
-      await songApi.likeSong(currentSong.id);
-      setLikedOverride({ songId: currentSong.id, liked: !isLiked });
-    } catch (error) {
-      console.error("Error liking song:", error);
-    } finally {
-      setIsLiking(false);
     }
   };
 

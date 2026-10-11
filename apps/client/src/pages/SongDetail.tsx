@@ -27,6 +27,7 @@ import {
 } from "@mui/icons-material";
 import songApi, { Song } from "../api/song";
 import { usePlayer } from "../player/usePlayer";
+import { useSongLike } from "../likes/useSongLike";
 import BackButton from "../components/BackButton";
 import AddToPlaylistDialog from "../components/AddToPlaylistDialog";
 import CoverArt from "../components/CoverArt";
@@ -72,13 +73,17 @@ const SongDetail: React.FC = () => {
   const [song, setSong] = useState<Song | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isLiking, setIsLiking] = useState(false);
   const [addToPlaylistOpen, setAddToPlaylistOpen] = useState(false);
   const { playSong, currentSong, isPlaying, pause, resume } = usePlayer();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const {
+    isLiked,
+    isLiking,
+    toggle: handleLike,
+  } = useSongLike(song?.id ?? null, song?.is_liked ?? false);
 
   const currentUserId = Number(localStorage.getItem("user_id"));
 
@@ -163,20 +168,6 @@ const SongDetail: React.FC = () => {
         cover_url: song.cover_url,
       };
       playSong(playerSong, [playerSong], 0, { type: "song_page" });
-    }
-  };
-
-  const handleLike = async () => {
-    if (isLiking) return;
-
-    try {
-      setIsLiking(true);
-      await songApi.likeSong(song.id);
-      setSong((prev) => (prev ? { ...prev, is_liked: !prev.is_liked } : null));
-    } catch (error) {
-      console.error("Error liking song:", error);
-    } finally {
-      setIsLiking(false);
     }
   };
 
@@ -314,14 +305,14 @@ const SongDetail: React.FC = () => {
               <IconButton
                 onClick={handleLike}
                 disabled={isLiking}
-                aria-label={song.is_liked ? "Unlike" : "Like"}
-                aria-pressed={song.is_liked}
+                aria-label={isLiked ? "Unlike" : "Like"}
+                aria-pressed={isLiked}
                 sx={{
                   ...actionSx,
-                  color: song.is_liked ? "primary.main" : actionSx.color,
+                  color: isLiked ? "primary.main" : actionSx.color,
                 }}
               >
-                {song.is_liked ? <Favorite /> : <FavoriteBorder />}
+                {isLiked ? <Favorite /> : <FavoriteBorder />}
               </IconButton>
               <Tooltip title="Add to playlist">
                 <IconButton

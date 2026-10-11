@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { Box, Card, Chip, IconButton, Link, Typography } from "@mui/material";
 import {
@@ -7,7 +7,8 @@ import {
   Pause,
   PlayArrow,
 } from "@mui/icons-material";
-import songApi, { Song } from "../api/song";
+import type { Song } from "../api/song";
+import { useSongLike } from "../likes/useSongLike";
 import { usePlayer } from "../player/usePlayer";
 import type { PlaybackSource } from "../tracking";
 import { tokens } from "../theme/tokens";
@@ -43,8 +44,7 @@ const SongCard: React.FC<SongCardProps> = ({
 }) => {
   const navigate = useNavigate();
   const { playSong, currentSong, isPlaying, pause, resume } = usePlayer();
-  const [isLiking, setIsLiking] = useState(false);
-  const [isLiked, setIsLiked] = useState(song.is_liked);
+  const { isLiked, isLiking, toggle } = useSongLike(song.id, song.is_liked);
 
   const handleClick = () => {
     navigate(`/song/${song.id}`);
@@ -74,19 +74,9 @@ const SongCard: React.FC<SongCardProps> = ({
     }
   };
 
-  const handleLike = async (e: React.MouseEvent) => {
+  const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isLiking) return;
-
-    try {
-      setIsLiking(true);
-      await songApi.likeSong(song.id);
-      setIsLiked(!isLiked);
-    } catch (error) {
-      console.error("Error liking song:", error);
-    } finally {
-      setIsLiking(false);
-    }
+    toggle();
   };
 
   const tags = song.tags;
