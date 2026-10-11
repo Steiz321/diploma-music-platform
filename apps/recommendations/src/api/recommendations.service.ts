@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RecommendationsResponse } from '@platform/contracts';
+import {
+  RecommendationsResponse,
+  TAG_VOCABULARY_VERSION,
+  UserTasteResponse,
+} from '@platform/contracts';
 import { RecommendationsRepository } from '../common/recommendations.repository';
 import { rank, RankingWeights } from '../ranking/ranking';
+import { describeTaste } from '../taste/taste';
 
 @Injectable()
 export class RecommendationsService {
@@ -35,6 +40,19 @@ export class RecommendationsService {
       items: rank(candidates, weights, profile, limit),
       cold_start: coldStart,
     };
+  }
+
+  /**
+   * The liked moods and topics of the user's profile. Null without a
+   * profile, or when it is aligned with an older tag vocabulary (its values
+   * would be read against the wrong keys).
+   */
+  async tasteOf(userId: number): Promise<UserTasteResponse> {
+    const profile = await this.repository.getProfile(userId);
+    if (!profile || profile.vocabulary_version !== TAG_VOCABULARY_VERSION) {
+      return { taste: null };
+    }
+    return { taste: describeTaste(profile.vector) };
   }
 
   /** "Similar tracks": tag similarity and co-liked tracks. */

@@ -17,3 +17,22 @@ export interface ProfileUpdatedPayload {
   /** how many tracks with tags and a non-zero score the profile is built from */
   scored_songs: number;
 }
+
+/** One liked tag of a profile, for display. */
+export interface TastePreference {
+  /** "group:value" key of TAG_VECTOR_KEYS, e.g. "mood:calm" */
+  key: string;
+  /** preference from the profile vector, above 0 */
+  value: number;
+}
+
+/** Response of the Recommendations service taste API (used by Core). */
+export interface UserTasteResponse {
+  /** null when the user has no profile yet */
+  taste: {
+    /** liked moods, strongest first */
+    moods: TastePreference[];
+    /** liked topics, strongest first */
+    topics: TastePreference[];
+  } | null;
+}

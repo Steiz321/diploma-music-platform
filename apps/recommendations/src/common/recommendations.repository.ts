@@ -182,6 +182,25 @@ export class RecommendationsRepository {
     return fromVector(row?.vector ?? null);
   }
 
+  /** The vector with the tag vocabulary it is aligned with */
+  async getProfile(
+    userId: number,
+  ): Promise<{ vector: number[]; vocabulary_version: number } | null> {
+    const [row] = await this.select<{
+      vector: string;
+      vocabulary_version: number;
+    }>(
+      `SELECT vector::text AS vector, vocabulary_version
+       FROM user_profiles WHERE user_id = :userId`,
+      { userId },
+    );
+    if (!row) return null;
+    return {
+      vector: fromVector(row.vector),
+      vocabulary_version: row.vocabulary_version,
+    };
+  }
+
   async hasPositiveScores(userId: number): Promise<boolean> {
     const [row] = await this.select<{ exists: boolean }>(
       `SELECT EXISTS (SELECT 1 FROM user_scores WHERE user_id = :userId AND score > 0) AS exists`,

@@ -5,7 +5,10 @@ import {
   ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiResponseDoc } from 'src/core/shared-kernel/rest/dto/api-response.dto';
+import GetUserTasteUseCase from '../application/usecase/get-user-taste.usecase';
+import { GetUserTasteResponse } from '../application/data/response/get-user-taste.response';
 import GetUserByIdUseCase from '../application/usecase/get-user-by-id.usecase';
 import GetUsersLikedSongsUseCase from '../application/usecase/get-users-liked-songs.usecase';
 import {
@@ -23,6 +26,7 @@ export class UserController {
     private readonly getUserByIdUseCase: GetUserByIdUseCase,
     private readonly getUsersLikedSongsUseCase: GetUsersLikedSongsUseCase,
     private readonly getUsersLikedPlaylistsUseCase: GetUsersLikedPlaylistsUseCase,
+    private readonly getUserTasteUseCase: GetUserTasteUseCase,
   ) {}
 
   @Get('/liked-songs')
@@ -35,6 +39,13 @@ export class UserController {
     return this.getUsersLikedPlaylistsUseCase.execute({
       userId: userAuth.user_id,
     });
+  }
+
+  @Get('/taste')
+  @ApiOperation({ summary: 'Get the taste profile of the current user' })
+  @ApiResponseDoc(GetUserTasteResponse)
+  async getUserTaste(@UserAuth() userAuth: UserAuthRequestObject) {
+    return this.getUserTasteUseCase.execute({ userId: userAuth.user_id });
   }
 
   @Get('/:id')

@@ -3,9 +3,12 @@ import { Box, CircularProgress, Tab, Tabs, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import songApi from "../api/song";
 import playlistApi from "../api/playlist";
+import userApi from "../api/user";
 import { handleApiError } from "../api/client";
 import RecommendedSongsSection from "../recommendations/RecommendedSongsSection";
 import MixHero, { MixHeroSkeleton } from "../recommendations/MixHero";
+import TasteCard, { TasteCardSkeleton } from "../recommendations/TasteCard";
+import { describeTaste } from "../recommendations/taste";
 import SongCard from "../components/SongCard";
 import PlaylistCard from "../components/PlaylistCard";
 import { CardGrid, EmptyState } from "../components/CardGrid";
@@ -54,6 +57,11 @@ const Feed: React.FC = () => {
     queryKey: ["recommendations", "for-you"],
     queryFn: () => songApi.getRecommended(6),
   });
+  const taste = useQuery({
+    queryKey: ["user", "taste"],
+    queryFn: () => userApi.getTaste(),
+    select: describeTaste,
+  });
   const songs = useQuery({
     queryKey: ["feed", "songs"],
     queryFn: () => songApi.getAllSongs(),
@@ -72,12 +80,29 @@ const Feed: React.FC = () => {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      {/* recommendations are optional: on an error the hero is hidden */}
-      {recommended.isLoading ? (
-        <MixHeroSkeleton />
-      ) : hasMix ? (
-        <MixHero data={mix} titleId="mix-h" />
-      ) : null}
+      {/* recommendations are optional: on an error the hero and the taste
+          card are hidden */}
+      {(recommended.isLoading || hasMix || taste.isLoading || taste.data) && (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) 360px" },
+            gap: 2.5,
+            alignItems: "stretch",
+          }}
+        >
+          {recommended.isLoading ? (
+            <MixHeroSkeleton />
+          ) : hasMix ? (
+            <MixHero data={mix} titleId="mix-h" />
+          ) : null}
+          {taste.isLoading ? (
+            <TasteCardSkeleton />
+          ) : taste.data ? (
+            <TasteCard taste={taste.data} titleId="taste-h" />
+          ) : null}
+        </Box>
+      )}
       {!hasMix && (
         <Typography component="h1" sx={visuallyHidden}>
           Feed

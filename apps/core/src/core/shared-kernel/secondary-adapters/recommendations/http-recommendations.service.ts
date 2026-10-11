@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RecommendationsResponse } from '@platform/contracts';
+import {
+  RecommendationsResponse,
+  UserTasteResponse,
+} from '@platform/contracts';
 import { RequestContext, REQUEST_ID_HEADER } from '@platform/messaging';
 import { RecommendationsServiceInterface } from '../../ports/recommendations-service.interface';
 import { RecommendationsConfig } from 'src/core/configuration/config.type';
@@ -28,7 +31,11 @@ export class HttpRecommendationsService
     return this.get(`/recommendations/songs/${songId}/similar?limit=${limit}`);
   }
 
-  private async get(path: string): Promise<RecommendationsResponse> {
+  tasteOf(userId: number): Promise<UserTasteResponse> {
+    return this.get(`/recommendations/users/${userId}/taste`);
+  }
+
+  private async get<T>(path: string): Promise<T> {
     const requestId = RequestContext.requestId();
     const response = await fetch(`${this.config.url}${path}`, {
       // the same request id in the logs of both services
@@ -38,6 +45,6 @@ export class HttpRecommendationsService
     if (!response.ok) {
       throw new Error(`Recommendations answered ${response.status}`);
     }
-    return (await response.json()) as RecommendationsResponse;
+    return (await response.json()) as T;
   }
 }

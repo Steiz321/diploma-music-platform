@@ -6,7 +6,10 @@ import {
   ParseIntPipe,
   Query,
 } from '@nestjs/common';
-import { RecommendationsResponse } from '@platform/contracts';
+import {
+  RecommendationsResponse,
+  UserTasteResponse,
+} from '@platform/contracts';
 import { RecommendationsService } from './recommendations.service';
 import { parseWeights } from '../ranking/ranking';
 
@@ -35,6 +38,14 @@ export class RecommendationsController {
       clampLimit(limit),
       parseWeights(weights, this.recommendations.userWeights),
     );
+  }
+
+  /** The "Your taste" card of the feed */
+  @Get('users/:userId/taste')
+  tasteOf(
+    @Param('userId', ParseIntPipe) userId: number,
+  ): Promise<UserTasteResponse> {
+    return this.recommendations.tasteOf(userId);
   }
 
   @Get('songs/:songId/similar')

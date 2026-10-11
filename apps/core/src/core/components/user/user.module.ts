@@ -15,6 +15,7 @@ import { GetUserAuthByTokenQueryHandler } from './application/query-handler/get-
 import { GetUserByIdQueryHandler } from './application/query-handler/get-user-by-id/get-user-by-id.handler';
 import GetUserByIdUseCase from './application/usecase/get-user-by-id.usecase';
 import GetUsersLikedSongsUseCase from './application/usecase/get-users-liked-songs.usecase';
+import GetUserTasteUseCase from './application/usecase/get-user-taste.usecase';
 import { UserController } from './primary-adapters/user.controller';
 import GetUsersLikedPlaylistsUseCase from './application/usecase/get-users-liked-playlists.usecase';
 
@@ -34,6 +35,7 @@ const useCases = [
   GetUserByIdUseCase,
   GetUsersLikedSongsUseCase,
   GetUsersLikedPlaylistsUseCase,
+  GetUserTasteUseCase,
 ];
 
 @Module({
