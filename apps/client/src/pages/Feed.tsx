@@ -132,6 +132,7 @@ const Feed: React.FC = () => {
                   song={song}
                   songs={displaySongs}
                   index={idx}
+                  source={{ type: "feed" }}
                 />
               ))}
             </Box>

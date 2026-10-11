@@ -1,13 +1,37 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Box, Typography, IconButton, Slider } from "@mui/material";
-import { PlayArrow, Pause, Favorite } from "@mui/icons-material";
+import {
+  PlayArrow,
+  Pause,
+  Favorite,
+  SkipNext,
+  SkipPrevious,
+} from "@mui/icons-material";
 import { usePlayer } from "./PlayerContext";
+import { usePlaybackTracking } from "./usePlaybackTracking";
 import songApi from "../api/song";
 import { useNavigate } from "react-router-dom";
 
 const BottomPlayer: React.FC = () => {
-  const { currentSong, isPlaying, pause, resume, playNext } = usePlayer();
+  const {
+    currentSong,
+    isPlaying,
+    pause,
+    resume,
+    playNext,
+    playPrev,
+    hasNext,
+    hasPrev,
+    playId,
+    source,
+  } = usePlayer();
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const tracking = usePlaybackTracking({
+    audioRef,
+    playId,
+    songId: currentSong?.id ?? null,
+    source,
+  });
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLiking, setIsLiking] = useState(false);
@@ -27,6 +51,7 @@ const BottomPlayer: React.FC = () => {
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
     }
+    tracking.onTimeUpdate();
   };
 
   const handleLoadedMetadata = () => {
@@ -37,8 +62,18 @@ const BottomPlayer: React.FC = () => {
 
   const handleSliderChange = (_: any, value: number | number[]) => {
     if (audioRef.current && typeof value === "number") {
+      tracking.onSeekChange();
       audioRef.current.currentTime = value;
       setCurrentTime(value);
+    }
+  };
+
+  const handleSliderCommitted = (
+    _: React.SyntheticEvent | Event,
+    value: number | number[]
+  ) => {
+    if (typeof value === "number") {
+      tracking.onSeekCommitted(value);
     }
   };
 
@@ -56,6 +91,7 @@ const BottomPlayer: React.FC = () => {
   };
 
   const handleSongEnd = async () => {
+    tracking.onEnded();
     if (currentSong) {
       try {
         await songApi.incrementListens(currentSong.id);
@@ -95,8 +131,15 @@ const BottomPlayer: React.FC = () => {
           {currentSong.author}
         </Typography>
       </Box>
-      <IconButton onClick={isPlaying ? pause : resume} sx={{ mx: 2 }}>
+      <IconButton onClick={playPrev} disabled={!hasPrev} sx={{ ml: 2 }}>
+        <SkipPrevious />
+      </IconButton>
+      <IconButton onClick={isPlaying ? pause : resume}>
         {isPlaying ? <Pause /> : <PlayArrow />}
+      </IconButton>
+      {/* a skip is the negative signal for recommendations */}
+      <IconButton onClick={playNext} disabled={!hasNext} sx={{ mr: 2 }}>
+        <SkipNext />
       </IconButton>
       <audio
         ref={audioRef}
@@ -106,12 +149,15 @@ const BottomPlayer: React.FC = () => {
         style={{ display: "none" }}
         autoPlay={isPlaying}
         onEnded={handleSongEnd}
+        onPlaying={tracking.onPlaying}
+        onPause={tracking.onPause}
       />
       <Slider
         min={0}
         max={duration}
         value={currentTime}
         onChange={handleSliderChange}
+        onChangeCommitted={handleSliderCommitted}
         sx={{ width: 200, mx: 2 }}
       />
       <Typography variant="caption" sx={{ minWidth: 50, textAlign: "right" }}>

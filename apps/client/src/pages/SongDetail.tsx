@@ -131,13 +131,14 @@ const SongDetail: React.FC = () => {
         resume();
       }
     } else {
-      playSong({
+      const playerSong = {
         id: song.id,
         name: song.name,
         author: song.user.username,
         audio: song.audio,
         is_liked: song.is_liked,
-      });
+      };
+      playSong(playerSong, [playerSong], 0, { type: "song_page" });
     }
   };
 

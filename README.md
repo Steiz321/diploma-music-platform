@@ -42,6 +42,7 @@ docker compose exec core npm run migration:undo              # відкотит�
 docker compose exec core npm run schema:check                # моделі Sequelize == таблиці БД
 docker compose exec core npm test                            # unit-тести (Jest)
 docker compose exec ai-enrichment npm test                   # unit-тести AI enrichment
+docker compose exec client npm test                          # unit-тести клієнта (Vitest)
 npm test                                                     # усі тести з кореня (на хості)
 
 # вміст бакета (у цій збірці MinIO немає веб-консолі)
@@ -144,6 +145,7 @@ docker compose restart ai-enrichment
 | `playlist.song_added` / `playlist.song_removed` | пісня в плейлисті | `playlist_id`, `song_id`, `user_id` |
 | `song.enriched` | AI enrichment обробив пісню | `song_id`, `status` (`done` \| `no_lyrics`), `transcription`, `text`, `lyrics`, `tags`, `vocabulary_version`, `models` |
 | `song.enrichment_failed` | немає навіть транскрипції | `song_id`, `stage` (`download` \| `transcription`), `reason`, `attempts` |
+| `playback.*` | події плеєра (див. нижче) | `play_id`, `song_id`, `position_sec`, `duration_sec`, `source`; для `playback.seeked` ще `from_sec`, `to_sec` |
 
 Envelope і типи — у пакеті [`@platform/contracts`](packages/contracts/src). Повідомлення persistent, `content-type: application/json`, `message_id` = `event_id`, `type` = тип події, заголовок `correlation_id` = request id HTTP-запиту, з якого почався ланцюжок (його можна передати заголовком `x-request-id`). Події, створені під час обробки іншої події, успадковують її `correlation_id`, тож HTTP-запит → `song.uploaded` → `song.enriched` → оновлення пісні простежуються за одним id у JSON-логах обох сервісів (поле `correlation_id`).
 
@@ -157,6 +159,25 @@ curl -u platform:platform-secret -H 'content-type: application/json' -X POST \
 curl -u platform:platform-secret -H 'content-type: application/json' -X POST \
   localhost:15672/api/queues/%2F/debug/get -d '{"count":10,"ackmode":"ack_requeue_false","encoding":"auto"}'
 ```
+
+## Події плеєра
+
+Клієнт збирає події плеєра власним трекером ([`apps/client/src/tracking`](apps/client/src/tracking), без сторонніх SDK) і шле їх батчами на `POST /events` у Core. Core бере `user_id` з токена і кладе кожну подію в outbox — далі вони йдуть у RabbitMQ як `playback.*`, так само як доменні події.
+
+| Подія | Коли |
+|---|---|
+| `playback.started` | трек почав грати |
+| `playback.progress` | кожні 15 с фактичного відтворення |
+| `playback.paused` / `playback.resumed` | пауза / продовження |
+| `playback.seeked` | відпущено повзунок (`from_sec` → `to_sec`) |
+| `playback.completed` | дослухано до кінця |
+| `playback.skipped` | next/prev або інший трек до кінця поточного — негативний сигнал |
+
+- `play_id` — один на сесію прослуховування треку; за ним Analytics склеює події сесії. `source` — звідки запущено: `feed`, `playlist` (+ `id`), `profile` (+ `id`), `liked`, `song_page`.
+- Трекер шле батч кожні 10 с або одразу при 20 подіях, а також коли вкладку сховано чи закрито. Усі запити — `fetch(..., { keepalive: true })`: вони не обриваються при закритті сторінки. `navigator.sendBeacon` не використовується, бо не вміє передати заголовок `Authorization`.
+- `event_id` генерує клієнт; повторно надісланий батч (після помилки мережі) не створює дублів — Core пропускає вже збережені id. Невдалий батч (мережа, `429`, `5xx`) лишається в черзі, до 200 подій.
+- `POST /events`: до 50 подій у батчі, 30 запитів на хвилину на користувача (далі `429`), відповідь `202 { accepted, duplicates }`. Час події — з клієнта, якщо він не далі 1 хв у майбутнє і не старший за 24 год, інакше час отримання.
+- `POST /song/:id/listen` (лічильник прослуховувань і таблиця `listens`) лишився як був — клієнт викликає його по завершенню треку.
 
 ## Запуск без Docker
 

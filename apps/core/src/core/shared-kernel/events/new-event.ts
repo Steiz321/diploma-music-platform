@@ -10,5 +10,6 @@ export const newEvent = <T extends EventType>(
   type: T,
   payload: EventPayloadMap[T],
   userId?: number,
+  options?: Parameters<typeof createEvent>[4],
 ): EventEnvelope<T, EventPayloadMap[T]> =>
-  createEvent(PRODUCER, type, payload, userId);
+  createEvent(PRODUCER, type, payload, userId, options);

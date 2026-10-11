@@ -78,7 +78,13 @@ const LikedSongs: React.FC = () => {
           }}
         >
           {songs.map((song, idx) => (
-            <SongCard key={song.id} song={song} songs={songs} index={idx} />
+            <SongCard
+              key={song.id}
+              song={song}
+              songs={songs}
+              index={idx}
+              source={{ type: "liked" }}
+            />
           ))}
         </Box>
       </Box>

@@ -31,6 +31,8 @@ import { StatusResponse } from 'src/core/shared-kernel/rest/dto/status-response.
 import CreateListenForSongUseCase from '../application/usecase/create-listen-for-song.usecase';
 import DeleteSongUseCase from '../application/usecase/delete-song.usecase';
 import { ListenThrottlerGuard } from '../application/guards/listen-throttler.guard';
+import { SkipThrottle } from '@nestjs/throttler';
+import { THROTTLERS } from 'src/core/shared-kernel/data/constants/throttlers.constant';
 
 @Controller('song')
 @UseGuards(AuthGuard)
@@ -99,6 +101,7 @@ export class SongController {
   @ApiOperation({ summary: 'Create a listen for a song' })
   @ApiResponseDoc(StatusResponse)
   @UseGuards(ListenThrottlerGuard)
+  @SkipThrottle({ [THROTTLERS.events.name]: true })
   async createListenForSong(
     @Param('id', ParseIntPipe) id: number,
     @UserAuth() userAuth: UserAuthRequestObject,

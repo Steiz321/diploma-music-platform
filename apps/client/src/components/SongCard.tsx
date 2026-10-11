@@ -20,14 +20,22 @@ import {
 } from "@mui/icons-material";
 import songApi, { Song } from "../api/song";
 import { usePlayer } from "../player/PlayerContext";
+import type { PlaybackSource } from "../tracking";
 
 interface SongCardProps {
   song: Song;
   songs?: Song[];
   index?: number;
+  /** where the card is shown, for player events */
+  source: PlaybackSource;
 }
 
-const SongCard: React.FC<SongCardProps> = ({ song, songs, index }) => {
+const SongCard: React.FC<SongCardProps> = ({
+  song,
+  songs,
+  index,
+  source,
+}) => {
   const navigate = useNavigate();
   const { playSong, currentSong, isPlaying, pause, resume } = usePlayer();
   const [isLiking, setIsLiking] = useState(false);
@@ -69,7 +77,8 @@ const SongCard: React.FC<SongCardProps> = ({ song, songs, index }) => {
           audio: s.audio,
           is_liked: s.is_liked,
         })) || [],
-        index
+        index,
+        source
       );
     }
   };
