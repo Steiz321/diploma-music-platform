@@ -5,7 +5,7 @@ import { Song } from '../../../application/data/song.dto';
 import SongModel from '../data/song.model';
 import { GetSongWhere } from '../query-params/song/get-song-where.params';
 import { SongCreateParams } from '../query-params/song/create-song.params';
-import { Sequelize, Transaction } from 'sequelize';
+import { Op, Sequelize, Transaction, WhereOptions } from 'sequelize';
 import { SongUpdateParams } from '../query-params/song/update-song.params';
 
 @Injectable()
@@ -18,9 +18,7 @@ export class SongRepositoryAdapter implements SongRepository {
     // match the search text literally: escape LIKE wildcards and the escape char,
     // then let Sequelize quote the whole pattern as a SQL string
     const escapedSearch = (search || '').replace(/[\\%_]/g, '\\$&');
-    const searchPattern = this.songModel.sequelize.escape(
-      `%${escapedSearch}%`,
-    );
+    const searchPattern = this.songModel.sequelize.escape(`%${escapedSearch}%`);
 
     const songs = await this.songModel.findAll({
       where: {
@@ -66,6 +64,36 @@ export class SongRepositoryAdapter implements SongRepository {
     const songs = await this.songModel.findAll({
       where,
       order: [['created_at', 'DESC']],
+    });
+    return songs.map((song) => song.toJSON());
+  }
+
+  async getByIds(ids: number[]): Promise<Song[]> {
+    if (ids.length === 0) return [];
+    const songs = await this.songModel.findAll({
+      where: { id: { [Op.in]: ids }, deleted_at: null },
+      include: [{ association: 'user', required: true }],
+    });
+    const byId = new Map(songs.map((song) => [song.id, song.toJSON()]));
+    return ids.filter((id) => byId.has(id)).map((id) => byId.get(id));
+  }
+
+  async getPopular(
+    limit: number,
+    exclude: { authorId?: number; songId?: number },
+  ): Promise<Song[]> {
+    const where: WhereOptions = { deleted_at: null };
+    if (exclude.authorId) where['user_id'] = { [Op.ne]: exclude.authorId };
+    if (exclude.songId) where['id'] = { [Op.ne]: exclude.songId };
+
+    const songs = await this.songModel.findAll({
+      where,
+      include: [{ association: 'user', required: true }],
+      order: [
+        ['listens', 'DESC'],
+        ['created_at', 'DESC'],
+      ],
+      limit,
     });
     return songs.map((song) => song.toJSON());
   }

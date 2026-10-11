@@ -1,0 +1,73 @@
+{
+  "name": "@platform/recommendations",
+  "version": "0.1.0",
+  "description": "Recommendations service: hybrid ranking (tag vectors in pgvector, collaborative signal, popularity)",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "nest build",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "test": "jest",
+    "migration:create": "cd src/sequelize-cli && sequelize-cli migration:generate --name ",
+    "migration:run": "cd src/sequelize-cli && sequelize-cli db:migrate",
+    "migration:undo": "cd src/sequelize-cli && sequelize-cli db:migrate:undo"
+  },
+  "dependencies": {
+    "@golevelup/nestjs-rabbitmq": "^9.1.0",
+    "@nestjs/common": "^11.2.7",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.2.7",
+    "@nestjs/platform-express": "^11.2.7",
+    "@nestjs/schedule": "^6.0.0",
+    "@nestjs/sequelize": "^11.0.0",
+    "@nestjs/terminus": "^12.1.0",
+    "@platform/contracts": "*",
+    "@platform/messaging": "*",
+    "dotenv": "^16.6.1",
+    "nestjs-pino": "^5.3.1",
+    "pg": "^8.15.6",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "sequelize": "^6.37.7",
+    "sequelize-cli": "^6.6.2",
+    "sequelize-typescript": "^2.1.6"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
+    "@eslint/js": "^9.18.0",
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.2.7",
+    "@types/express": "^5.0.1",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "globals": "^16.0.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.4.2",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.ts$": "ts-jest"
+    },
+    "testEnvironment": "node"
+  }
+}

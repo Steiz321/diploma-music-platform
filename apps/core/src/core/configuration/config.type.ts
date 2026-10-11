@@ -41,6 +41,13 @@ export interface OutboxConfig {
   retentionDays: number;
 }
 
+export interface RecommendationsConfig {
+  // base URL of the Recommendations service (internal network)
+  url: string;
+  // a slower answer is dropped and popular tracks are shown instead
+  timeoutMs: number;
+}
+
 export default interface Configuration {
   node: NodeConfig;
   db: SequelizeModuleOptions;
@@ -48,4 +55,5 @@ export default interface Configuration {
   s3: S3Config;
   rabbitmq: RabbitMQConfig;
   outbox: OutboxConfig;
+  recommendations: RecommendationsConfig;
 }

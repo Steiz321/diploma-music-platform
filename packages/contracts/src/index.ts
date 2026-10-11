@@ -8,3 +8,4 @@ export * from './tags';
 export * from './playback';
 export * from './profile';
 export * from './producers';
+export * from './recommendations';

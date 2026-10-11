@@ -14,6 +14,7 @@ COPY apps/core/package.json apps/core/
 COPY apps/client/package.json apps/client/
 COPY apps/ai-enrichment/package.json apps/ai-enrichment/
 COPY apps/analytics/package.json apps/analytics/
+COPY apps/recommendations/package.json apps/recommendations/
 RUN npm ci --no-audit --no-fund --workspace=$NPM_WORKSPACE \
   && sha256sum package-lock.json | cut -d ' ' -f 1 > node_modules/.package-lock.sha256
 

@@ -6,19 +6,20 @@
 > позначені явно. Початковий опис — стан на 2026-09-26; розділи, яких торкнулися етап 2
 > (багфікси, монорепо, RabbitMQ, transactional outbox, логи й health checks, 2026-10-03) і етап 3
 > (сервіс AI enrichment, 2026-10-04), події плеєра (`POST /events`, трекер на клієнті, 2026-10-05) і сервіс Analytics
-> (профілі вподобань, 2026-10-06) оновлено. Інфраструктура етапу 1 (Docker Compose, MinIO замість
+> (профілі вподобань, 2026-10-06) і сервіс Recommendations (2026-10-07) оновлено. Інфраструктура етапу 1 (Docker Compose, MinIO замість
 > AWS S3) описана в `README.md`; розділ 12 і частина розділу 7 ще описують бакалаврський стан.
 
 ---
 
 ## 0. TL;DR
 
-- **Монорепо на npm workspaces**: `apps/core` (NestJS 11 + Sequelize 6 + PostgreSQL), `apps/ai-enrichment` (NestJS, власна БД), `apps/analytics` (NestJS, власна БД), `apps/client` (React 19 + Vite 6 + MUI 7), `packages/contracts` (`@platform/contracts` — контракти подій, словник тегів), `packages/messaging` (`@platform/messaging` — RabbitMQ, outbox, inbox, логи). Git, Docker Compose, `.env.example`; CI немає.
+- **Монорепо на npm workspaces**: `apps/core` (NestJS 11 + Sequelize 6 + PostgreSQL), `apps/ai-enrichment` (NestJS, власна БД), `apps/analytics` (NestJS, власна БД), `apps/recommendations` (NestJS, власна БД з pgvector), `apps/client` (React 19 + Vite 6 + MUI 7), `packages/contracts` (`@platform/contracts` — контракти подій, словник тегів), `packages/messaging` (`@platform/messaging` — RabbitMQ, outbox, inbox, логи). Git, Docker Compose, `.env.example`; CI немає.
 - Core — **модульний моноліт у стилі гексагональної архітектури** (ports & adapters) + CQRS-шина `@nestjs/cqrs` для міжмодульних викликів (query/command handlers). Доменні події пишуться в **transactional outbox** (`outbox_events`) у транзакції use case'а і публікуються релеєм у **RabbitMQ** (topic exchange `platform.events`). `EventBus` з `@nestjs/cqrs` для цього свідомо не використовується.
 - Файли (аудіо, обкладинки, аватари) — **AWS S3, публічні URL**; стрімінг — браузерний `<audio src="https://bucket.s3...">` напряму з S3 (бекенд аудіо не проксує).
 - ШІ — окремий сервіс **AI enrichment**: за подією `song.uploaded` транскрибує аудіо (Groq Whisper) і аналізує текст (Groq `gpt-oss-120b`: строфи з таймкодами, теги зі словника), результат повертає в Core подією `song.enriched`. `POST /song` на транскрипцію не чекає (див. §8).
 - Поведінкові дані сьогодні: лайки (toggle з **м'яким видаленням**, один рядок на пару), кожне прослуховування на `ended` — рядок у `listens` з `user_id` + атомарний інкремент `song.listens` (rate limit 1 раз на 30 с на пару користувач–пісня), доменні події `song.liked`/`song.unliked`/`playlist.song_added`/... і **події плеєра** `playback.*` (start, progress, pause/resume, seek, complete, skip з позицією, `play_id` і `source`) у RabbitMQ.
 - **Analytics** будує з подій сесії прослуховування, неявні оцінки пар користувач–трек і профіль вподобань (вектор за словником тегів), публікує `profile.updated` (див. §8а).
+- **Recommendations** ранжує треки гібридно (схожість тегів з профілем через pgvector + слухачі зі схожим смаком + популярність) і пояснює кожну рекомендацію; клієнт отримує «Для тебе» і «Схожі треки» через Core з фолбеком на популярне (§8б).
 - Відомі проблеми — §15; виправлені позначені ✅.
 
 ---
@@ -565,6 +566,18 @@ erDiagram
 
 ---
 
+## 8б. Recommendations: «Для тебе» і «Схожі треки»
+
+Сервіс `apps/recommendations` (плаский NestJS, власна БД `recommendations` з розширенням `vector`, внутрішній HTTP API на 3003). Наповнюється подіями (черга `recommendations.events`, prefetch 1, DLQ, inbox, перевірка видавця): `tracks` (тег-вектор `vector(36)`, HNSW-індекс за косинусом), `user_profiles` (`vector(36)` з `profile.updated`), `user_scores` (з `scores.updated`; формула оцінки лишається в Analytics).
+
+- **Кандидати й сигнали — один SQL на запит** (`common/recommendations.repository.ts`): content = `1 - (tag_vector <=> profile)`; collaborative — user-based: сусіди за косинусом множин позитивно оцінених треків, частка їхньої ваги, що любить трек; popularity = ln(1 + Σ позитивних оцінок) / max. Для «схожих»: схожість тег-векторів, частка фанатів треку, яким подобається кандидат.
+- **Ранжування — чиста функція** (`ranking/ranking.ts`): зважена сума (конфіг `RECOMMENDATION_WEIGHTS` / `SIMILAR_WEIGHTS`), нові треки першими при рівності, пояснення (теги без мови; енергія — лише за відсутності настрою/теми; «схожі слухачі»; «популярне»).
+- **Core** (`components/song`): `GET /song/recommended`, `GET /song/:id/similar` → порт `RecommendationsServiceInterface` (HTTP, `AbortSignal.timeout`, `x-request-id`) → гідратація пісень у порядку сервісу з `is_liked`; при помилці/таймауті/порожній відповіді — популярні за `listens` (`source: "popular"`).
+- **Клієнт:** секція «For you» над стрічкою, «Similar tracks» на сторінці пісні, підпис-пояснення під кожною карткою; програвання звідти — `source: { type: "recommendations" }` у подіях плеєра.
+- **Обмеження:** немає backfill (треки й оцінки з'являються з подій після запуску сервісу); вектори — лише теги (ембединги згодом окремою колонкою, див. THESIS_CONTEXT).
+
+---
+
 ## 9. Плейлисти, лайки та інші соціальні фічі
 
 - **Плейлисти** (модуль `song`): створення з обкладинкою (обов'язкова), `is_private`; редагування (`PATCH`); перегляд усіх публічних, публічних конкретного юзера, одного плейлиста з треками; додавання і видалення треку (лише власник, без дублів); м'яке видалення. Немає: порядку треків, колаборативних плейлистів.
@@ -711,6 +724,7 @@ npm run dev                # Vite на http://localhost:5000
 - Core: `ApplySongEnrichmentUseCase` (оновлення пісні, `no_lyrics`, `failed`, повтор події, видалена пісня).
 - Core: валідація `POST /events` (типи, джерела, межі, `from_sec`/`to_sec` для seek), use case (envelope на подію, `user_id` з токена, час клієнта з межами, дублі).
 - Analytics: сесії (прослуханий час, пауза, seek, ранній пропуск, події не по порядку), формула оцінки й обмеження, профіль (нормування, негативні теги), інгестія (дублі, пізні теги, лайки, плейлисти).
+- Recommendations: ранжування (ваги, порядок, негативна схожість, пояснення), теги-пояснення, перевірка видавця подій. Core: фолбек на популярне (помилка, таймаут, порожньо, видалені пісні).
 - Клієнт: Vitest (`npm test` в `apps/client`), unit-тести трекера: батчі, розбиття по 50, повтор невдалого батчу в тому ж порядку з тими самими `event_id`, відкидання при `4xx`, ліміт черги.
 - Лінтери: ESLint 9 + Prettier (Core), ESLint 9 (клієнт).
 
@@ -744,11 +758,8 @@ npm run dev                # Vite на http://localhost:5000
 ### 14.2 Бекенд: ендпоінт для подій плеєра (реалізовано)
 Варіант (A): Core як BFF/шлюз — `POST /events` (компонент `components/playback/`), `user_id` з `AuthGuard`, кожна подія — envelope в outbox, далі RabbitMQ (`playback.*`). Нові сервіси назовні не відкриті й автентифікацією не займаються.
 
-### 14.3 Бекенд: куди вбудувати рекомендації
-- `GetAllSongsUseCase` (`song/application/usecase/get-all-songs.usecase.ts`) — зараз «усі пісні за датою»; сюди або в новий `GET /song/recommended` / `GET /feed/for-you` — виклик Recommendation-сервісу (HTTP/gRPC) з фолбеком на поточну логіку.
-- Нові ендпоінти на кшталт `GET /song/:id/similar`, `GET /playlist/recommended`.
-- Для виклику зовнішніх сервісів варто повторити наявний патерн: **порт** у `shared-kernel/ports/` (як `s3-service.interface.ts`) + **адаптер** у `shared-kernel/secondary-adapters/` + конфіг у `core/configuration/config.ts`.
-- Існуючі `CheckSongLikeQuery` та інші query handlers можна перевикористати для «збагачення» рекомендованих id (`is_liked`, автор) у моноліті.
+### 14.3 Рекомендації (реалізовано)
+Див. §8б: окремий сервіс, Core як шлюз з таймаутом і фолбеком на популярне.
 
 ### 14.4 Бекенд: транскрипція як окремий AI-сервіс (реалізовано на етапі 3)
 Див. §8. Наступні кроки в тому самому сервісі: ембединги (рішення — у `docs/THESIS_CONTEXT.md`: зараз теги як вектор, ембединги згодом окремою колонкою), синхронізований текст у плеєрі за таймкодами `lyrics`.

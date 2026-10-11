@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  DefaultValuePipe,
   Body,
   Controller,
   Delete,
@@ -30,9 +31,14 @@ import GetSongByIdUseCase from '../application/usecase/get-song-by-id.usecase';
 import { StatusResponse } from 'src/core/shared-kernel/rest/dto/status-response.dto';
 import CreateListenForSongUseCase from '../application/usecase/create-listen-for-song.usecase';
 import DeleteSongUseCase from '../application/usecase/delete-song.usecase';
+import GetRecommendedSongsUseCase from '../application/usecase/get-recommended-songs.usecase';
+import GetSimilarSongsUseCase from '../application/usecase/get-similar-songs.usecase';
+import { RecommendedSongsResponse } from '../application/data/response/recommended-songs.response';
 import { ListenThrottlerGuard } from '../application/guards/listen-throttler.guard';
 import { SkipThrottle } from '@nestjs/throttler';
 import { THROTTLERS } from 'src/core/shared-kernel/data/constants/throttlers.constant';
+
+const MAX_RECOMMENDATIONS = 30;
 
 @Controller('song')
 @UseGuards(AuthGuard)
@@ -43,6 +49,8 @@ export class SongController {
     private readonly getSongByIdUseCase: GetSongByIdUseCase,
     private readonly createListenForSongUseCase: CreateListenForSongUseCase,
     private readonly deleteSongUseCase: DeleteSongUseCase,
+    private readonly getRecommendedSongsUseCase: GetRecommendedSongsUseCase,
+    private readonly getSimilarSongsUseCase: GetSimilarSongsUseCase,
   ) {}
 
   @Post()
@@ -84,6 +92,38 @@ export class SongController {
     return this.getAllSongsUseCase.execute({
       search,
       userId: userAuth.user_id,
+    });
+  }
+
+  // before ':id', or "recommended" would be parsed as an id
+  @Get('recommended')
+  @ApiOperation({
+    summary:
+      '"For you": recommendations for the current user (popular fallback)',
+  })
+  @ApiResponseDoc(RecommendedSongsResponse)
+  async getRecommendedSongs(
+    @UserAuth() userAuth: UserAuthRequestObject,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ): Promise<RecommendedSongsResponse> {
+    return this.getRecommendedSongsUseCase.execute({
+      userId: userAuth.user_id,
+      limit: Math.min(Math.max(limit, 1), MAX_RECOMMENDATIONS),
+    });
+  }
+
+  @Get(':id/similar')
+  @ApiOperation({ summary: 'Similar tracks (popular fallback)' })
+  @ApiResponseDoc(RecommendedSongsResponse)
+  async getSimilarSongs(
+    @Param('id', ParseIntPipe) id: number,
+    @UserAuth() userAuth: UserAuthRequestObject,
+    @Query('limit', new DefaultValuePipe(6), ParseIntPipe) limit: number,
+  ): Promise<RecommendedSongsResponse> {
+    return this.getSimilarSongsUseCase.execute({
+      songId: id,
+      userId: userAuth.user_id,
+      limit: Math.min(Math.max(limit, 1), MAX_RECOMMENDATIONS),
     });
   }
 

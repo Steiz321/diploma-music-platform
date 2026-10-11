@@ -1,6 +1,6 @@
 # Музична платформа
 
-Музична платформа (типу SoundCloud): Core — модульний моноліт на NestJS, сервіс **AI enrichment** (транскрипція Groq Whisper і аналіз тексту Groq LLM), сервіс **Analytics** (сесії прослуховування, оцінки, профілі вподобань), React SPA, PostgreSQL, S3-сумісне сховище (MinIO) і RabbitMQ для доменних подій (transactional outbox).
+Музична платформа (типу SoundCloud): Core — модульний моноліт на NestJS, сервіс **AI enrichment** (транскрипція Groq Whisper і аналіз тексту Groq LLM), сервіс **Analytics** (сесії прослуховування, оцінки, профілі вподобань), сервіс **Recommendations** («Для тебе», «Схожі треки»; pgvector), React SPA, PostgreSQL, S3-сумісне сховище (MinIO) і RabbitMQ для доменних подій (transactional outbox).
 Детальний технічний опис кодової бази — у [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md).
 
 ## Швидкий старт
@@ -23,9 +23,10 @@ PostgreSQL (+ база `ai_enrichment`), MinIO, RabbitMQ → створення 
 | Health check AI enrichment | http://localhost:3001/health |
 | Health check Analytics | http://localhost:3002/health |
 | Профіль користувача (debug) | http://localhost:3002/profiles/&lt;userId&gt; |
+| Recommendations (health і внутрішній API) | http://localhost:3003/health |
 | RabbitMQ management UI | http://localhost:15672, `platform` / `platform-secret` |
 | Файли (MinIO S3 API, публічне читання) | http://localhost:9000/music-files/&lt;key&gt; |
-| PostgreSQL | `localhost:5432`: БД Core `music` (користувач/пароль `music`), БД AI enrichment `ai_enrichment` (`ai_enrichment` / `ai-enrichment`), БД Analytics `analytics` (`analytics` / `analytics`) |
+| PostgreSQL | `localhost:5432`: БД Core `music` (користувач/пароль `music`), БД AI enrichment `ai_enrichment` (`ai_enrichment` / `ai-enrichment`), БД Analytics `analytics` (`analytics` / `analytics`), БД Recommendations `recommendations` з pgvector (`recommendations` / `recommendations`) |
 
 Код `apps/*` і `packages/` примонтовано в контейнери: зміни підхоплюються без перезапуску (Nest watch, Vite HMR). Спільні пакети компілює і стежить за ними контейнер Core.
 
@@ -36,6 +37,7 @@ docker compose up -d                 # у фоні
 docker compose logs -f core          # логи Core
 docker compose logs -f ai-enrichment # логи AI enrichment
 docker compose logs -f analytics     # логи Analytics
+docker compose logs -f recommendations # логи Recommendations
 docker compose down                  # зупинити (дані лишаються)
 docker compose down -v               # зупинити і стерти БД та файли
 docker compose up --build            # перезібрати образи (напр. після зміни Dockerfile)
@@ -46,6 +48,7 @@ docker compose exec core npm run schema:check                # моделі Sequ
 docker compose exec core npm test                            # unit-тести (Jest)
 docker compose exec ai-enrichment npm test                   # unit-тести AI enrichment
 docker compose exec analytics npm test                       # unit-тести Analytics
+docker compose exec recommendations npm test                 # unit-тести Recommendations
 docker compose exec client npm test                          # unit-тести клієнта (Vitest)
 npm test                                                     # усі тести з кореня (на хості)
 
@@ -73,6 +76,9 @@ cp .env.example .env
 | `CLIENT_PORT`, `SERVER_PORT`, `AI_ENRICHMENT_PORT`, `ANALYTICS_PORT`, `POSTGRES_PORT`, `MINIO_PORT` | `5173`, `3000`, `3001`, `3002`, `5432`, `9000` | порти на хості |
 | `AI_ENRICHMENT_DB_PASSWORD`, `ANALYTICS_DB_PASSWORD` | `ai-enrichment`, `analytics` | паролі користувачів БД сервісів |
 | `PROFILE_RECOMPUTE_INTERVAL_MS` | `60000` | як часто Analytics перераховує змінені профілі |
+| `RECOMMENDATION_WEIGHTS`, `SIMILAR_WEIGHTS` | `0.6,0.3,0.1`, `0.7,0.25,0.05` | ваги ранжування: content, collaborative, popularity |
+| `RECOMMENDATIONS_TIMEOUT_MS` | `800` | скільки Core чекає Recommendations, далі — популярні пісні |
+| `RECOMMENDATIONS_PORT`, `RECOMMENDATIONS_DB_PASSWORD` | `3003`, `recommendations` | порт (лише `127.0.0.1`) і пароль БД |
 | `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT` | `5672`, `15672` | AMQP і management UI на хості |
 | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | `platform`, `platform-secret` | облікові дані RabbitMQ |
 | `LOG_LEVEL` | `info` | рівень логів Core і AI enrichment (pino) |
@@ -110,7 +116,7 @@ cp .env.example .env
 
 ### Існуючий том Postgres
 
-Бази сервісів (`ai_enrichment`, `analytics`) створюються скриптами [`infra/postgres/init`](infra/postgres/init) лише при створенні тому. Якщо том з'явився раніше, ніж сервіс, — або `docker compose down -v` (стирає дані), або один раз для кожної бази, напр.:
+Бази сервісів (`ai_enrichment`, `analytics`, `recommendations` з розширенням `vector`) створюються скриптами [`infra/postgres/init`](infra/postgres/init) лише при створенні тому. Якщо том з'явився раніше, ніж сервіс, — або `docker compose down -v` (стирає дані), або один раз для кожної бази, напр.:
 
 ```bash
 docker compose exec postgres psql -U music -d music \
@@ -142,6 +148,7 @@ docker compose restart analytics
 |---|---|---|
 | `ai-enrichment.song-uploaded` | AI enrichment | `song.uploaded` |
 | `core.song-enrichment` | Core | `song.enriched`, `song.enrichment_failed` |
+| `recommendations.events` | Recommendations | `song.uploaded`, `song.enriched`, `song.deleted`, `profile.updated`, `scores.updated` |
 | `analytics.events` | Analytics | `playback.*`, `song.liked`, `song.unliked`, `playlist.song_added`, `playlist.song_removed`, `song.uploaded`, `song.enriched`, `song.deleted` |
 
 | Подія | Коли | Payload |
@@ -153,6 +160,7 @@ docker compose restart analytics
 | `playlist.song_added` / `playlist.song_removed` | пісня в плейлисті | `playlist_id`, `song_id`, `user_id` |
 | `song.enriched` | AI enrichment обробив пісню | `song_id`, `status` (`done` \| `no_lyrics`), `transcription`, `text`, `lyrics`, `tags`, `vocabulary_version`, `models` |
 | `song.enrichment_failed` | немає навіть транскрипції | `song_id`, `stage` (`download` \| `transcription`), `reason`, `attempts` |
+| `scores.updated` | Analytics перерахував оцінки | `user_id`, `scores: [{ song_id, score }]` (ненульові) |
 | `profile.updated` | Analytics перерахував профіль | `user_id`, `vector` (за `TAG_VECTOR_KEYS`), `top_tags`, `scored_songs`, `vocabulary_version` |
 | `playback.*` | події плеєра (див. нижче) | `play_id`, `song_id`, `position_sec`, `duration_sec`, `source`; для `playback.seeked` ще `from_sec`, `to_sec` |
 
@@ -168,6 +176,22 @@ curl -u platform:platform-secret -H 'content-type: application/json' -X POST \
 curl -u platform:platform-secret -H 'content-type: application/json' -X POST \
   localhost:15672/api/queues/%2F/debug/get -d '{"count":10,"ackmode":"ack_requeue_false","encoding":"auto"}'
 ```
+
+## Recommendations: «Для тебе» і «Схожі треки»
+
+Сервіс [`apps/recommendations`](apps/recommendations) з власною БД `recommendations` (pgvector). З подій тримає власну копію: треки з тег-векторами (`song.enriched`), профілі (`profile.updated`) і оцінки (`scores.updated`) з Analytics.
+
+**«Для тебе»** — кандидати: треки, з якими користувач ще не взаємодіяв (власні й видалені — ні). Три сигнали, зважена сума (`RECOMMENDATION_WEIGHTS`, за замовчуванням 0.6 / 0.3 / 0.1):
+
+| Сигнал | Як рахується |
+|---|---|
+| content | косинусна схожість тег-вектора треку з профілем (pgvector, `<=>`); теги, які користувач не любить, дають мінус |
+| collaborative | слухачі з подібним смаком (косинус множин позитивно оцінених треків), частка їхньої ваги, яким трек подобається |
+| popularity | ln(1 + сума позитивних оцінок), відносно найпопулярнішого |
+
+Холодний старт (немає профілю й оцінок) — по суті за популярністю. **«Схожі треки»** — те саме відносно треку: схожість тегів, «його фанатам подобається ще», популярність (`SIMILAR_WEIGHTS`, 0.7 / 0.25 / 0.05). Кожна рекомендація пояснює себе: теги, що збіглися (мова не називається, енергія — лише якщо більше нічого), «подобається слухачам зі схожим смаком», «популярне».
+
+**Через Core.** Клієнт ходить у Core: `GET /song/recommended`, `GET /song/:id/similar`. Core синхронно питає Recommendations з таймаутом `RECOMMENDATIONS_TIMEOUT_MS` (800 мс) і, якщо сервіс не відповів, помилився чи порожній, віддає популярні пісні (`source: "popular"`) — стрічка від нього не залежить. Recommendations назовні не відкритий (порт 3003 лише на `127.0.0.1`).
 
 ## Analytics: сесії, оцінки, профілі вподобань
 
@@ -238,10 +262,11 @@ apps/core/              Core: NestJS API (Sequelize, міграції в src/seq
 apps/ai-enrichment/     AI enrichment: транскрипція і аналіз тексту (власна БД і міграції)
 apps/ai-enrichment/fixtures/  записана відповідь Groq для фейкового провайдера
 apps/analytics/         Analytics: сесії прослуховування, оцінки, профілі (власна БД і міграції)
+apps/recommendations/   Recommendations: гібридне ранжування, pgvector (власна БД і міграції)
 apps/client/            React SPA (Vite, MUI)
 packages/contracts/     @platform/contracts: контракти подій, словник тегів (без runtime-залежностей)
 packages/messaging/     @platform/messaging: RabbitMQ, outbox і релей, inbox, request context, логи
-infra/postgres/         init-скрипти: бази і користувачі AI enrichment та Analytics
+infra/postgres/         init-скрипти: бази і користувачі AI enrichment, Analytics, Recommendations (+ pgvector)
 infra/minio/            ініціалізація бакета, публічна політика, mock-зображення
 infra/docker/           dev-entrypoint для Node-контейнерів
 docker-compose.yml      локальне оточення

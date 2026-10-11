@@ -24,6 +24,7 @@ export const EVENT_PRODUCERS: Record<EventType, string> = {
   'song.enriched': 'ai-enrichment',
   'song.enrichment_failed': 'ai-enrichment',
   'profile.updated': 'analytics',
+  'scores.updated': 'analytics',
 };
 
 /** True when the envelope comes from the service that owns its type. */

@@ -32,6 +32,7 @@ import songApi, { Song } from "../api/song";
 import { usePlayer } from "../player/PlayerContext";
 import BackButton from "../components/BackButton";
 import AddToPlaylistDialog from "../components/AddToPlaylistDialog";
+import RecommendedSongsSection from "../recommendations/RecommendedSongsSection";
 
 const LYRICS_POLL_INTERVAL_MS = 5000;
 
@@ -391,6 +392,15 @@ const SongDetail: React.FC = () => {
             </Box>
           </Box>
         </Paper>
+        <Box sx={{ mt: 4 }}>
+          <RecommendedSongsSection
+            title="Similar tracks"
+            fallbackTitle="You may also like"
+            kind="similar"
+            load={() => songApi.getSimilar(song.id, 6)}
+            reloadKey={song.id}
+          />
+        </Box>
       </Box>
       <AddToPlaylistDialog
         open={addToPlaylistOpen}

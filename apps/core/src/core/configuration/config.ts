@@ -57,6 +57,10 @@ const configure = async (): Promise<Configuration> => {
       batchSize: Number(process.env.OUTBOX_RELAY_BATCH_SIZE) || 100,
       retentionDays: 7,
     },
+    recommendations: {
+      url: process.env.RECOMMENDATIONS_URL || 'http://localhost:3003',
+      timeoutMs: Number(process.env.RECOMMENDATIONS_TIMEOUT_MS) || 800,
+    },
   };
 };
 
