@@ -11,6 +11,22 @@ export interface RankingWeights {
   popularity: number;
 }
 
+/**
+ * "content,collaborative,popularity", e.g. "0.6,0.3,0.1"; the defaults when
+ * the value is missing or malformed.
+ */
+export const parseWeights = (
+  value: string | undefined,
+  defaults: RankingWeights,
+): RankingWeights => {
+  const parts = (value ?? '').split(',').map((part) => Number(part.trim()));
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+    return defaults;
+  }
+  const [content, collaborative, popularity] = parts;
+  return { content, collaborative, popularity };
+};
+
 /** A track that may be recommended, with its three signals (from SQL). */
 export interface Candidate {
   song_id: number;

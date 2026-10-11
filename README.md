@@ -234,6 +234,10 @@ curl -u platform:platform-secret -H 'content-type: application/json' -X POST \
 - `POST /events`: до 50 подій у батчі, 30 запитів на хвилину на користувача (далі `429`), відповідь `202 { accepted, duplicates }`. Час події — з клієнта, якщо він не далі 1 хв у майбутнє і не старший за 24 год, інакше час отримання.
 - `POST /song/:id/listen` (лічильник прослуховувань і таблиця `listens`) лишився як був — клієнт викликає його по завершенню треку.
 
+## Експерименти
+
+[`experiments/`](experiments/README.md): симулятор користувачів-персон через справжній API (`npm run simulate`), офлайн-оцінка рекомендацій — hit rate@k, precision@k гібриду проти популярності й випадкового порядку (`npm run evaluate`), навантажувальні тести k6 (`experiments/k6/run.sh`). Звіти — `experiments/results/`.
+
 ## Запуск без Docker
 
 Потрібні Node.js з [.nvmrc](.nvmrc), ffmpeg (для Groq і файлів > 24 MB), доступні PostgreSQL, S3/MinIO і RabbitMQ.
@@ -263,6 +267,7 @@ apps/ai-enrichment/     AI enrichment: транскрипція і аналіз 
 apps/ai-enrichment/fixtures/  записана відповідь Groq для фейкового провайдера
 apps/analytics/         Analytics: сесії прослуховування, оцінки, профілі (власна БД і міграції)
 apps/recommendations/   Recommendations: гібридне ранжування, pgvector (власна БД і міграції)
+experiments/            симулятор користувачів, офлайн-метрики рекомендацій, k6 (див. experiments/README.md)
 apps/client/            React SPA (Vite, MUI)
 packages/contracts/     @platform/contracts: контракти подій, словник тегів (без runtime-залежностей)
 packages/messaging/     @platform/messaging: RabbitMQ, outbox і релей, inbox, request context, логи

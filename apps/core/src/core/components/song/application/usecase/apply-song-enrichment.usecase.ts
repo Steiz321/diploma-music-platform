@@ -32,20 +32,22 @@ export default class ApplySongEnrichmentUseCase
   public async execute(
     event: SongEnrichmentEvent,
   ): Promise<ApplyEnrichmentOutcome> {
-    const result = await this.inbox.runOnce(event.event_id, async (t) => {
-      const song = await this.songRepository.getOneWhere({
-        id: event.payload.song_id,
-      });
-
-      if (!song) {
-        return 'song_missing' as const;
-      }
-
-      await this.songRepository.update(toSongUpdate(event), { id: song.id }, t);
-      return 'applied' as const;
+    // Looked up before the transaction: a query outside it while it is open
+    // needs a second pool connection, and a burst of messages handled in
+    // parallel then exhausts the pool (every handler holds one, waits for
+    // another).
+    const song = await this.songRepository.getOneWhere({
+      id: event.payload.song_id,
     });
+    if (!song) {
+      return 'song_missing';
+    }
 
-    return result.processed ? result.result : 'skipped';
+    const result = await this.inbox.runOnce(event.event_id, (t) =>
+      this.songRepository.update(toSongUpdate(event), { id: song.id }, t),
+    );
+
+    return result.processed ? 'applied' : 'skipped';
   }
 }
 

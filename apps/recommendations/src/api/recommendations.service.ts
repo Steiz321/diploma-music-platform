@@ -6,8 +6,9 @@ import { rank, RankingWeights } from '../ranking/ranking';
 
 @Injectable()
 export class RecommendationsService {
-  private readonly userWeights: RankingWeights;
-  private readonly similarWeights: RankingWeights;
+  /** configured defaults (RECOMMENDATION_WEIGHTS / SIMILAR_WEIGHTS) */
+  readonly userWeights: RankingWeights;
+  readonly similarWeights: RankingWeights;
 
   constructor(
     private readonly repository: RecommendationsRepository,
@@ -21,6 +22,7 @@ export class RecommendationsService {
   async forUser(
     userId: number,
     limit: number,
+    weights: RankingWeights = this.userWeights,
   ): Promise<RecommendationsResponse> {
     const [profile, hasScores, candidates] = await Promise.all([
       this.repository.getProfileVector(userId),
@@ -30,7 +32,7 @@ export class RecommendationsService {
     const coldStart = !profile && !hasScores;
 
     return {
-      items: rank(candidates, this.userWeights, profile, limit),
+      items: rank(candidates, weights, profile, limit),
       cold_start: coldStart,
     };
   }
@@ -39,6 +41,7 @@ export class RecommendationsService {
   async similarTo(
     songId: number,
     limit: number,
+    weights: RankingWeights = this.similarWeights,
   ): Promise<RecommendationsResponse> {
     const [target, candidates] = await Promise.all([
       this.repository.getTrackVector(songId),
@@ -46,7 +49,7 @@ export class RecommendationsService {
     ]);
 
     return {
-      items: rank(candidates, this.similarWeights, target, limit),
+      items: rank(candidates, weights, target, limit),
       cold_start: false,
     };
   }

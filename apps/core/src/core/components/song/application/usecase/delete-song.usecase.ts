@@ -61,13 +61,17 @@ export default class DeleteSongUseCase
       throw new ForbiddenException('You are not allowed to delete this song');
     }
 
+    // read before the transaction: a query outside an open transaction needs
+    // a second pool connection (pool exhaustion under parallel requests)
+    const songToPlaylistRecords =
+      await this.songToPlaylistRepository.getAllWhere({ song_id: songId });
+    const listensRecords = await this.listensRepository.getAllWhere({
+      song_id: songId,
+    });
+
     const t = await this.sequelize.transaction();
 
     try {
-      // check if song exist in some playlists
-      const songToPlaylistRecords =
-        await this.songToPlaylistRepository.getAllWhere({ song_id: songId });
-
       if (songToPlaylistRecords.length > 0) {
         for (const songToPlaylistRecord of songToPlaylistRecords) {
           await this.songToPlaylistRepository.delete(
@@ -78,10 +82,6 @@ export default class DeleteSongUseCase
       }
 
       // delete listens
-      const listensRecords = await this.listensRepository.getAllWhere({
-        song_id: songId,
-      });
-
       if (listensRecords.length > 0) {
         for (const listenRecord of listensRecords) {
           await this.listensRepository.delete(listenRecord.id, t);
