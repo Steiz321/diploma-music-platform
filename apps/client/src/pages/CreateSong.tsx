@@ -1,39 +1,22 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Container,
-  Typography,
-  Box,
-  TextField,
-  Button,
-  Paper,
-} from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Box, TextField, Button, Alert } from "@mui/material";
 import songApi from "../api/song";
-import BackButton from "../components/BackButton";
-
-const StyledPaper = styled(Paper)(({ theme }) => ({
-  marginTop: theme.spacing(4),
-  padding: theme.spacing(4),
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-}));
-
-const StyledForm = styled("form")(({ theme }) => ({
-  width: "100%",
-  marginTop: theme.spacing(1),
-}));
-
-const StyledButton = styled(Button)(({ theme }) => ({
-  margin: theme.spacing(3, 0, 2),
-}));
+import FormCard from "../components/FormCard";
+import FileDropzone from "../components/FileDropzone";
 
 interface CreateSongForm {
   name: string;
   cover: File | null;
   audio: File | null;
 }
+
+type CreateSongFormErrors = {
+  name?: string;
+  cover?: string;
+  audio?: string;
+  submit?: string;
+};
 
 const CreateSong: React.FC = () => {
   const navigate = useNavigate();
@@ -42,12 +25,6 @@ const CreateSong: React.FC = () => {
     cover: null,
     audio: null,
   });
-  type CreateSongFormErrors = {
-    name?: string;
-    cover?: string;
-    audio?: string;
-  };
-
   const [errors, setErrors] = useState<CreateSongFormErrors>({});
   const [isLoading, setIsLoading] = useState(false);
 
@@ -72,7 +49,8 @@ const CreateSong: React.FC = () => {
       await songApi.createSong(data);
       navigate("/feed");
     } catch (error) {
-      setErrors({ name: "Failed to create song. Please try again." });
+      console.error("Error creating song:", error);
+      setErrors({ submit: "Failed to create song. Please try again." });
     } finally {
       setIsLoading(false);
     }
@@ -81,96 +59,72 @@ const CreateSong: React.FC = () => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, files } = e.target;
     if (type === "file" && files) {
-      setFormData((prev) => ({ ...prev, [name]: files[0] }));
-      setErrors((prev) => ({ ...prev, [name]: undefined }));
+      setFormData((prev) => ({ ...prev, [name]: files[0] ?? null }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
-      setErrors((prev) => ({ ...prev, [name]: undefined }));
     }
+    setErrors((prev) => ({ ...prev, [name]: undefined, submit: undefined }));
   };
 
   return (
-    <Container maxWidth="md">
-      <BackButton sx={{ mt: 4, mb: 2 }} />
-      <StyledPaper elevation={6}>
-        <Typography component="h1" variant="h4" gutterBottom>
-          Create New Song
-        </Typography>
-        <StyledForm onSubmit={handleSubmit} encType="multipart/form-data">
-          <TextField
-            variant="outlined"
-            margin="normal"
-            required
-            fullWidth
-            id="name"
-            label="Song Name"
-            name="name"
-            autoFocus
-            value={formData.name}
-            onChange={handleChange}
-            error={!!errors.name}
-            helperText={errors.name}
-          />
-          <Box sx={{ mt: 2, width: "100%" }}>
-            <input
-              accept="image/*"
-              style={{ display: "none" }}
-              id="cover-upload"
-              type="file"
-              name="cover"
-              onChange={handleChange}
-            />
-            <label htmlFor="cover-upload">
-              <Button
-                variant="outlined"
-                component="span"
-                fullWidth
-                color={errors.cover ? "error" : "primary"}
-              >
-                {formData.cover ? formData.cover.name : "Upload Cover Image*"}
-              </Button>
-            </label>
-            {errors.cover && (
-              <Typography color="error">{errors.cover}</Typography>
-            )}
-          </Box>
-          <Box sx={{ mt: 2, width: "100%" }}>
-            <input
-              accept="audio/mp3"
-              style={{ display: "none" }}
-              id="audio-upload"
-              type="file"
-              name="audio"
-              onChange={handleChange}
-            />
-            <label htmlFor="audio-upload">
-              <Button
-                variant="outlined"
-                component="span"
-                fullWidth
-                color={errors.audio ? "error" : "primary"}
-              >
-                {formData.audio
-                  ? formData.audio.name
-                  : "Upload Audio File (mp3)*"}
-              </Button>
-            </label>
-            {errors.audio && (
-              <Typography color="error">{errors.audio}</Typography>
-            )}
-          </Box>
-          <StyledButton
-            type="submit"
-            fullWidth
-            variant="contained"
-            color="primary"
-            disabled={isLoading}
-          >
-            {isLoading ? "Creating..." : "Create Song"}
-          </StyledButton>
-        </StyledForm>
-      </StyledPaper>
-    </Container>
+    <FormCard
+      title="Upload a song"
+      subtitle="Lyrics and tags are added automatically after the upload."
+    >
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        encType="multipart/form-data"
+        noValidate
+        sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}
+      >
+        <TextField
+          variant="outlined"
+          required
+          fullWidth
+          id="name"
+          label="Song name"
+          name="name"
+          autoFocus
+          value={formData.name}
+          onChange={handleChange}
+          error={!!errors.name}
+          helperText={errors.name}
+        />
+        <FileDropzone
+          id="audio-upload"
+          name="audio"
+          accept="audio/mp3"
+          label="Audio file"
+          hint="MP3"
+          required
+          file={formData.audio}
+          error={errors.audio}
+          onChange={handleChange}
+        />
+        <FileDropzone
+          id="cover-upload"
+          name="cover"
+          accept="image/*"
+          label="Cover image"
+          hint="An image, square works best"
+          required
+          file={formData.cover}
+          error={errors.cover}
+          onChange={handleChange}
+        />
+        {errors.submit && <Alert severity="error">{errors.submit}</Alert>}
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          disabled={isLoading}
+          sx={{ height: 48, fontSize: 15 }}
+        >
+          {isLoading ? "Uploading..." : "Upload song"}
+        </Button>
+      </Box>
+    </FormCard>
   );
 };
 

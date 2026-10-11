@@ -24,6 +24,7 @@ import {
   lyricsToText,
   toStructuredLyrics,
   toTags,
+  unknownTagValues,
 } from '../analysis/analysis.mapper';
 import { AudioNotFoundError, AudioStorage } from '../storage/audio-storage';
 import { RetryExhaustedError, withRetry } from '../common/retry.util';
@@ -149,13 +150,20 @@ export class EnrichmentService {
         if (output.instrumental) {
           return { analysis: { instrumental: true, lyrics: null, tags: null } };
         }
-        return {
-          analysis: {
-            instrumental: false,
-            lyrics: toStructuredLyrics(output, transcription.segments),
-            tags: toTags(output, language),
-          },
+        const analysis = {
+          instrumental: false,
+          lyrics: toStructuredLyrics(output, transcription.segments),
+          tags: toTags(output, language),
         };
+
+        // the song keeps its valid tags; the invented ones are only reported
+        const unknown = unknownTagValues(output);
+        if (unknown.length === 0) {
+          return { analysis };
+        }
+        const note = `analysis: dropped tag values outside the vocabulary: ${unknown.join(', ')}`;
+        this.logger.warn(note);
+        return { analysis, error: note };
       } catch (err) {
         const retry =
           err instanceof InvalidAnalysisError && attempt < ANALYSIS_ATTEMPTS;

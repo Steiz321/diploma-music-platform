@@ -1,32 +1,11 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
+import axios from "axios";
 import authApi, { RegisterRequest } from "../api/auth";
-import {
-  Box,
-  Button,
-  Container,
-  TextField,
-  Typography,
-  Paper,
-} from "@mui/material";
-import { styled } from "@mui/material/styles";
-
-const StyledPaper = styled(Paper)(({ theme }) => ({
-  marginTop: theme.spacing(8),
-  padding: theme.spacing(4),
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-}));
-
-const StyledForm = styled("form")(({ theme }) => ({
-  width: "100%",
-  marginTop: theme.spacing(1),
-}));
-
-const StyledButton = styled(Button)(({ theme }) => ({
-  margin: theme.spacing(3, 0, 2),
-}));
+import { Alert, Box, Button, Link, TextField, Typography } from "@mui/material";
+import AuthCard from "../components/AuthCard";
+import FileDropzone from "../components/FileDropzone";
+import { tokens } from "../theme/tokens";
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -40,6 +19,7 @@ const Register: React.FC = () => {
   const [errors, setErrors] = useState<
     Partial<RegisterRequest> & { general?: string }
   >({});
+  const [isLoading, setIsLoading] = useState(false);
 
   const validateForm = (): boolean => {
     const newErrors: Partial<RegisterRequest> = {};
@@ -71,6 +51,7 @@ const Register: React.FC = () => {
       return;
     }
 
+    setIsLoading(true);
     try {
       const data = new FormData();
       data.append("username", formData.username);
@@ -79,10 +60,6 @@ const Register: React.FC = () => {
       data.append("description", formData.description);
       if (avatarFile) {
         data.append("avatar", avatarFile);
-      }
-      // Debug: log all FormData entries
-      for (let pair of data.entries()) {
-        console.log(pair[0], pair[1]);
       }
       const response = await authApi.register(data);
       // Store the token and user info in localStorage
@@ -94,29 +71,27 @@ const Register: React.FC = () => {
       localStorage.setItem("user_id", response.id.toString());
       // Redirect to feed page
       navigate("/feed");
-    } catch (error: any) {
+    } catch (error) {
       console.error("Registration failed:", error);
       // Show the specific error message from the backend
-      if (error.response?.data?.message) {
-        setErrors({
-          ...errors,
-          general: error.response.data.message,
-        });
-      } else if (error.response?.data) {
-        setErrors({
-          ...errors,
-          general: JSON.stringify(error.response.data),
-        });
-      } else {
-        setErrors({
-          ...errors,
-          general: "Registration failed. Please try again.",
-        });
+      const body = axios.isAxiosError(error) ? error.response?.data : undefined;
+      let general = "Registration failed. Please try again.";
+      if (body?.message) {
+        general = Array.isArray(body.message)
+          ? body.message.join(", ")
+          : String(body.message);
+      } else if (body) {
+        general = JSON.stringify(body);
       }
+      setErrors((prev) => ({ ...prev, general }));
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
@@ -138,113 +113,99 @@ const Register: React.FC = () => {
   };
 
   return (
-    <Container component="main" maxWidth="xs">
-      <StyledPaper elevation={6}>
-        <Typography component="h1" variant="h5">
-          Register
-        </Typography>
-        <StyledForm onSubmit={handleSubmit}>
-          <TextField
-            variant="outlined"
-            margin="normal"
-            required
-            fullWidth
-            id="username"
-            label="Username"
-            name="username"
-            autoComplete="username"
-            autoFocus
-            value={formData.username}
-            onChange={handleChange}
-            error={!!errors.username}
-            helperText={errors.username}
-          />
-          <TextField
-            variant="outlined"
-            margin="normal"
-            required
-            fullWidth
-            id="email"
-            label="Email Address"
-            name="email"
-            autoComplete="email"
-            value={formData.email}
-            onChange={handleChange}
-            error={!!errors.email}
-            helperText={errors.email}
-          />
-          <TextField
-            variant="outlined"
-            margin="normal"
-            required
-            fullWidth
-            name="password"
-            label="Password"
-            type="password"
-            id="password"
-            autoComplete="new-password"
-            value={formData.password}
-            onChange={handleChange}
-            error={!!errors.password}
-            helperText={errors.password}
-          />
-          <TextField
-            variant="outlined"
-            margin="normal"
-            fullWidth
-            name="description"
-            label="Description"
-            id="description"
-            multiline
-            rows={4}
-            value={formData.description}
-            onChange={handleChange}
-            error={!!errors.description}
-            helperText={errors.description}
-          />
-          <Button
-            variant="outlined"
-            component="label"
-            fullWidth
-            sx={{ mt: 2, mb: 1 }}
-          >
-            Upload Avatar
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={handleAvatarChange}
-            />
-          </Button>
-          {avatarFile && (
-            <Typography variant="body2" align="center" sx={{ mb: 1 }}>
-              Selected: {avatarFile.name}
-            </Typography>
-          )}
-          <StyledButton
-            type="submit"
-            fullWidth
-            variant="contained"
-            color="primary"
-          >
-            Register
-          </StyledButton>
-          {errors.general && (
-            <Typography color="error" align="center" sx={{ mt: 2 }}>
-              {errors.general}
-            </Typography>
-          )}
-          <Box mt={2}>
-            <Typography variant="body2" align="center">
-              Already have an account?{" "}
-              <Button color="primary" onClick={() => navigate("/login")}>
-                Sign In
-              </Button>
-            </Typography>
-          </Box>
-        </StyledForm>
-      </StyledPaper>
-    </Container>
+    <AuthCard title="Create an account" subtitle="Upload songs, build playlists.">
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        noValidate
+        sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+      >
+        <TextField
+          variant="outlined"
+          required
+          fullWidth
+          id="username"
+          label="Username"
+          name="username"
+          autoComplete="username"
+          autoFocus
+          value={formData.username}
+          onChange={handleChange}
+          error={!!errors.username}
+          helperText={errors.username}
+        />
+        <TextField
+          variant="outlined"
+          required
+          fullWidth
+          id="email"
+          label="Email address"
+          name="email"
+          type="email"
+          autoComplete="email"
+          value={formData.email}
+          onChange={handleChange}
+          error={!!errors.email}
+          helperText={errors.email}
+        />
+        <TextField
+          variant="outlined"
+          required
+          fullWidth
+          name="password"
+          label="Password"
+          type="password"
+          id="password"
+          autoComplete="new-password"
+          value={formData.password}
+          onChange={handleChange}
+          error={!!errors.password}
+          helperText={errors.password ?? "At least 6 characters"}
+        />
+        <TextField
+          variant="outlined"
+          fullWidth
+          name="description"
+          label="About you"
+          id="description"
+          multiline
+          rows={3}
+          value={formData.description}
+          onChange={handleChange}
+          error={!!errors.description}
+          helperText={errors.description}
+        />
+        <FileDropzone
+          id="avatar-upload"
+          name="avatar"
+          accept="image/*"
+          label="Avatar"
+          hint="Optional"
+          file={avatarFile}
+          onChange={handleAvatarChange}
+        />
+        {errors.general && <Alert severity="error">{errors.general}</Alert>}
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          disabled={isLoading}
+          sx={{ height: 48, mt: 1, fontSize: 15 }}
+        >
+          {isLoading ? "Creating account..." : "Create account"}
+        </Button>
+      </Box>
+      <Typography variant="body2" align="center" sx={{ color: tokens.muted }}>
+        Already have an account?{" "}
+        <Link
+          component={RouterLink}
+          to="/login"
+          sx={{ "&, &:visited": { color: "primary.main" }, fontWeight: 600 }}
+        >
+          Sign in
+        </Link>
+      </Typography>
+    </AuthCard>
   );
 };
 

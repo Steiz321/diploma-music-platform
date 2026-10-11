@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Container, Typography, Box } from "@mui/material";
+import { Box, CircularProgress, Typography } from "@mui/material";
 import playlistApi, { Playlist } from "../api/playlist";
 import PlaylistCard from "../components/PlaylistCard";
+import { CardGrid, EmptyState } from "../components/CardGrid";
 
 const LikedPlaylists: React.FC = () => {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -24,56 +25,29 @@ const LikedPlaylists: React.FC = () => {
     fetchLikedPlaylists();
   }, []);
 
-  if (loading) {
-    return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography>Loading...</Typography>
-        </Box>
-      </Container>
-    );
-  }
-
-  if (error) {
-    return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography color="error">{error}</Typography>
-        </Box>
-      </Container>
-    );
-  }
-
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Liked Playlists
-        </Typography>
-        {playlists.length === 0 ? (
-          <Typography color="text.secondary">
-            You haven't liked any playlists yet.
-          </Typography>
-        ) : (
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-            {playlists.map((playlist) => (
-              <Box
-                key={playlist.id}
-                sx={{
-                  width: {
-                    xs: "100%",
-                    sm: "calc(50% - 12px)",
-                    md: "calc(33.33% - 16px)",
-                  },
-                }}
-              >
-                <PlaylistCard playlist={playlist} />
-              </Box>
-            ))}
-          </Box>
-        )}
-      </Box>
-    </Container>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <Typography variant="h3" component="h1">
+        Liked playlists
+      </Typography>
+      {loading ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : error ? (
+        <Typography color="error">{error}</Typography>
+      ) : playlists.length === 0 ? (
+        <EmptyState title="No liked playlists yet">
+          Like a playlist and it will be saved here.
+        </EmptyState>
+      ) : (
+        <CardGrid>
+          {playlists.map((playlist) => (
+            <PlaylistCard key={playlist.id} playlist={playlist} />
+          ))}
+        </CardGrid>
+      )}
+    </Box>
   );
 };
 

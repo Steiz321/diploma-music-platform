@@ -1,17 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
 import {
-  Container,
   Typography,
   Box,
   Avatar,
-  Paper,
   IconButton,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
-  ListItemSecondaryAction,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -22,22 +15,48 @@ import {
   FormControlLabel,
   Switch,
   Tooltip,
+  Link,
+  CircularProgress,
+  Chip,
 } from "@mui/material";
 import {
   PlayArrow,
-  QueueMusic,
-  Person,
-  AccessTime,
   Pause,
   Favorite,
-  Delete,
+  FavoriteBorder,
+  DeleteOutline,
   Edit,
   RemoveCircleOutline,
+  GraphicEq,
+  Person,
 } from "@mui/icons-material";
 import playlistApi, { Playlist } from "../api/playlist";
-import songApi, { Song } from "../api/song";
-import { usePlayer } from "../player/PlayerContext";
+import songApi from "../api/song";
+import { usePlayer } from "../player/usePlayer";
+import type { PlayerSong } from "../player/usePlayer";
 import BackButton from "../components/BackButton";
+import CoverArt from "../components/CoverArt";
+import { tokens } from "../theme/tokens";
+
+type PlaylistSong = Playlist["songs"][number];
+
+const toPlayerSong = (song: PlaylistSong): PlayerSong => ({
+  id: song.id,
+  name: song.name,
+  author: song.user.username,
+  audio: song.audio,
+  is_liked: song.is_liked,
+  cover_url: song.cover_url,
+});
+
+/** round icon button of the header (44px target) */
+const actionSx = {
+  width: 48,
+  height: 48,
+  bgcolor: tokens.surface2,
+  color: tokens.textSecondary,
+  "&:hover": { bgcolor: tokens.lineStrong, color: tokens.text },
+} as const;
 
 const PlaylistDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -45,7 +64,8 @@ const PlaylistDetails: React.FC = () => {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { currentSong, isPlaying, playSong, pause, resume } = usePlayer();
+  const { currentSong, isPlaying, playSong, pause, resume, source } =
+    usePlayer();
   const [likingStates, setLikingStates] = useState<{ [key: number]: boolean }>(
     {}
   );
@@ -78,7 +98,6 @@ const PlaylistDetails: React.FC = () => {
         }
 
         const data = await playlistApi.getPlaylistById(parseInt(id));
-        console.log("Playlist data:", data);
         setPlaylist(data);
         setIsLiked(data.is_liked);
       } catch (err) {
@@ -92,23 +111,11 @@ const PlaylistDetails: React.FC = () => {
     fetchPlaylist();
   }, [id]);
 
-  const handleUserClick = () => {
-    if (playlist) {
-      navigate(`/profile/${playlist.user.id}`);
-    }
-  };
+  const songs: PlaylistSong[] = Array.isArray(playlist?.songs)
+    ? playlist.songs
+    : [];
 
-  const handleSongClick = (song: Song, index: number, songs: Song[]) => {
-    navigate(`/song/${song.id}`);
-  };
-
-  const handlePlayPause = (
-    e: React.MouseEvent,
-    song: Song,
-    index: number,
-    songs: Song[]
-  ) => {
-    e.stopPropagation();
+  const handlePlayPause = (song: PlaylistSong, index: number) => {
     if (currentSong?.id === song.id) {
       if (isPlaying) {
         pause();
@@ -116,38 +123,38 @@ const PlaylistDetails: React.FC = () => {
         resume();
       }
     } else {
-      playSong(
-        {
-          id: song.id,
-          name: song.name,
-          author: song.user.username,
-          audio: song.audio,
-          is_liked: song.is_liked,
-        },
-        songs.map((s) => ({
-          id: s.id,
-          name: s.name,
-          author: s.user.username,
-          audio: s.audio,
-          is_liked: s.is_liked,
-        })),
-        index,
-        { type: "playlist", id: playlist?.id }
-      );
+      playSong(toPlayerSong(song), songs.map(toPlayerSong), index, {
+        type: "playlist",
+        id: playlist?.id,
+      });
     }
   };
 
-  const handleLike = async (e: React.MouseEvent, song: Song) => {
-    e.stopPropagation();
+  // the queue in the player came from this playlist
+  const isQueueOfPlaylist =
+    !!playlist &&
+    source.type === "playlist" &&
+    source.id === playlist.id &&
+    songs.some((s) => s.id === currentSong?.id);
+
+  const handlePlayAll = () => {
+    if (isQueueOfPlaylist) {
+      if (isPlaying) {
+        pause();
+      } else {
+        resume();
+      }
+    } else if (songs.length > 0) {
+      handlePlayPause(songs[0], 0);
+    }
+  };
+
+  const handleLike = async (song: PlaylistSong) => {
     if (likingStates[song.id]) return;
 
     try {
       setLikingStates((prev) => ({ ...prev, [song.id]: true }));
       await songApi.likeSong(song.id);
-      // Update the song's is_liked status in the local state
-      const updatedSongs = songs.map((s) =>
-        s.id === song.id ? { ...s, is_liked: !s.is_liked } : s
-      );
       setPlaylist((prev) =>
         prev
           ? {
@@ -165,8 +172,7 @@ const PlaylistDetails: React.FC = () => {
     }
   };
 
-  const handlePlaylistLike = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handlePlaylistLike = async () => {
     if (isLiking) return;
 
     try {
@@ -190,6 +196,7 @@ const PlaylistDetails: React.FC = () => {
         navigate("/");
       }, 1200);
     } catch (err) {
+      console.error("Error deleting playlist:", err);
       setDeleteError("Failed to delete playlist");
     } finally {
       setDeleting(false);
@@ -235,8 +242,7 @@ const PlaylistDetails: React.FC = () => {
     }
   };
 
-  const handleRemoveSong = async (e: React.MouseEvent, song: Song) => {
-    e.stopPropagation();
+  const handleRemoveSong = async (song: PlaylistSong) => {
     if (!playlist || removingSongId) return;
     setRemovingSongId(song.id);
     try {
@@ -253,182 +259,184 @@ const PlaylistDetails: React.FC = () => {
     }
   };
 
-  // Transform playlist songs to match the Song type
-  const transformSongs = (playlistSongs: Playlist["songs"]): Song[] => {
-    if (!Array.isArray(playlistSongs)) {
-      console.warn("playlistSongs is not an array:", playlistSongs);
-      return [];
-    }
-
-    return playlistSongs.map((song) => ({
-      id: song.id,
-      name: song.name,
-      user_id: song.user.id,
-      description: "",
-      text: "",
-      audio: song.audio,
-      listens: song.listens,
-      is_liked: song.is_liked || false,
-      cover_url: song.cover_url,
-      created_at: new Date(),
-      updated_at: new Date(),
-      user: {
-        id: song.user.id,
-        username: song.user.username,
-        description: null,
-        avatar: null,
-        is_verified: false,
-        songs: [],
-        playlists: [],
-      },
-    }));
-  };
-
   if (loading) {
     return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography>Loading...</Typography>
-        </Box>
-      </Container>
+      <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+        <CircularProgress aria-label="Loading playlist" />
+      </Box>
     );
   }
 
   if (error || !playlist) {
     return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography color="error">{error || "Playlist not found"}</Typography>
-        </Box>
-      </Container>
+      <Typography color="error">{error || "Playlist not found"}</Typography>
     );
   }
 
-  const songs = transformSongs(playlist.songs);
+  const showPauseAll = isQueueOfPlaylist && isPlaying;
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: 4 }}>
-        <BackButton sx={{ mb: 2 }} />
-        {/* Playlist Header */}
-        <Paper sx={{ p: 4, mb: 4 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <BackButton />
+
+      {/* header */}
+      <Box
+        component="header"
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
+          alignItems: { xs: "flex-start", sm: "flex-end" },
+          gap: { xs: 3, sm: 4 },
+          p: { xs: 2.5, sm: 4 },
+          borderRadius: "24px",
+          bgcolor: tokens.surface,
+          border: `1px solid ${tokens.line}`,
+        }}
+      >
+        <CoverArt
+          id={playlist.id}
+          src={playlist.cover_url}
+          ring={22}
+          sx={{ width: { xs: 180, sm: 220 }, borderRadius: "16px" }}
+        />
+        <Box
+          sx={{
+            minWidth: 0,
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            gap: 1.25,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography
+              component="span"
+              sx={{
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: tokens.subtle,
+              }}
+            >
+              Playlist
+            </Typography>
+            {playlist.is_private && <Chip label="Private" variant="outlined" />}
+          </Box>
+          <Typography
+            variant="h2"
+            component="h1"
+            sx={{ overflowWrap: "anywhere" }}
+          >
+            {playlist.title}
+          </Typography>
+          {playlist.description && (
+            <Typography sx={{ color: tokens.muted, maxWidth: "60ch" }}>
+              {playlist.description}
+            </Typography>
+          )}
           <Box
             sx={{
               display: "flex",
-              flexDirection: { xs: "column", md: "row" },
-              gap: 3,
+              alignItems: "center",
+              flexWrap: "wrap",
+              columnGap: 1.5,
+              color: tokens.muted,
+              fontSize: 14,
             }}
           >
-            {/* Playlist Cover */}
-            <Box
-              sx={{ flex: { md: "0 0 33.33%" }, maxWidth: { md: "33.33%" } }}
+            <Link
+              component={RouterLink}
+              to={`/profile/${playlist.user.id}`}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 1,
+                minHeight: 44,
+                "&, &:visited": { color: tokens.text },
+                fontWeight: 600,
+              }}
             >
-              <Box
-                component="img"
-                src={playlist.cover_url}
-                alt={playlist.title}
-                sx={{
-                  width: "100%",
-                  height: "auto",
-                  borderRadius: 2,
-                  boxShadow: 3,
-                }}
-              />
-            </Box>
-
-            {/* Playlist Info */}
-            <Box sx={{ flex: "1 1 auto" }}>
-              <Box
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  height: "100%",
-                }}
+              <Avatar
+                src={playlist.user.avatar || undefined}
+                alt=""
+                sx={{ width: 28, height: 28, bgcolor: tokens.surface2 }}
               >
-                <Typography variant="overline">Playlist</Typography>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                  <Typography variant="h3" component="h1" sx={{ mb: 2 }}>
-                    {playlist.title}
-                  </Typography>
-                  <IconButton
-                    size="large"
-                    onClick={handlePlaylistLike}
-                    disabled={isLiking}
-                    color={isLiked ? "error" : "default"}
-                    sx={{ mt: -1 }}
-                  >
-                    <Favorite fontSize="large" />
-                  </IconButton>
-                </Box>
-
-                {playlist.description && (
-                  <Typography color="text.secondary" sx={{ mb: 2 }}>
-                    {playlist.description}
-                  </Typography>
-                )}
-
-                {/* Creator Info */}
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    mb: 2,
-                    cursor: "pointer",
-                  }}
-                  onClick={handleUserClick}
-                >
-                  <Avatar
-                    src={playlist.user.avatar}
-                    alt={playlist.user.username}
-                    sx={{ width: 24, height: 24, mr: 1 }}
-                  />
-                  <Typography variant="body2">
-                    Created by {playlist.user.username}
-                  </Typography>
-                  {isOwner && (
-                    <>
-                      <Tooltip title="Edit playlist">
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit();
-                          }}
-                          sx={{ ml: 1 }}
-                        >
-                          <Edit />
-                        </IconButton>
-                      </Tooltip>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteDialogOpen(true);
-                        }}
-                      >
-                        <Delete />
-                      </IconButton>
-                    </>
-                  )}
-                </Box>
-
-                {/* Stats */}
-                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    <QueueMusic sx={{ mr: 0.5 }} />
-                    <Typography variant="body2">
-                      {playlist.songs.length} songs
-                    </Typography>
-                  </Box>
-                </Box>
-              </Box>
-            </Box>
+                <Person fontSize="small" />
+              </Avatar>
+              {playlist.user.username}
+            </Link>
+            <span aria-hidden>·</span>
+            <span>
+              {songs.length} {songs.length === 1 ? "song" : "songs"}
+            </span>
           </Box>
-        </Paper>
 
-        {/* Songs List */}
-        <Typography variant="h5" sx={{ mb: 3 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 1.5,
+              mt: 1,
+            }}
+          >
+            <Button
+              variant="contained"
+              onClick={handlePlayAll}
+              disabled={songs.length === 0}
+              startIcon={showPauseAll ? <Pause /> : <PlayArrow />}
+              sx={{ height: 48, px: 3, fontSize: 15 }}
+            >
+              {showPauseAll ? "Pause" : "Play all"}
+            </Button>
+            <IconButton
+              onClick={handlePlaylistLike}
+              disabled={isLiking}
+              aria-label={isLiked ? "Unlike playlist" : "Like playlist"}
+              aria-pressed={isLiked}
+              sx={{
+                ...actionSx,
+                color: isLiked ? "primary.main" : actionSx.color,
+              }}
+            >
+              {isLiked ? <Favorite /> : <FavoriteBorder />}
+            </IconButton>
+            {isOwner && (
+              <>
+                <Tooltip title="Edit playlist">
+                  <IconButton
+                    onClick={openEdit}
+                    aria-label="Edit playlist"
+                    sx={actionSx}
+                  >
+                    <Edit />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Delete playlist">
+                  <IconButton
+                    onClick={() => setDeleteDialogOpen(true)}
+                    aria-label="Delete playlist"
+                    sx={{
+                      ...actionSx,
+                      "&:hover": {
+                        bgcolor: tokens.lineStrong,
+                        color: "error.main",
+                      },
+                    }}
+                  >
+                    <DeleteOutline />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          </Box>
+        </Box>
+      </Box>
+
+      {/* track list */}
+      <Box component="section" aria-labelledby="tracks-heading">
+        <Typography id="tracks-heading" variant="h5" component="h2" sx={{ mb: 1.5 }}>
           Songs
         </Typography>
 
@@ -437,179 +445,257 @@ const PlaylistDetails: React.FC = () => {
             No songs in this playlist yet.
           </Typography>
         ) : (
-          <Paper>
-            <List>
-              {songs.map((song, idx) => (
-                <ListItem
+          <Box
+            component="ol"
+            sx={{
+              listStyle: "none",
+              m: 0,
+              p: 0.75,
+              borderRadius: "18px",
+              bgcolor: tokens.card,
+              border: `1px solid ${tokens.cardBorder}`,
+            }}
+          >
+            {songs.map((song, idx) => {
+              const isCurrent = currentSong?.id === song.id;
+              const showPause = isCurrent && isPlaying;
+              return (
+                <Box
+                  component="li"
                   key={song.id}
+                  aria-current={isCurrent ? "true" : undefined}
                   sx={{
-                    cursor: "pointer",
-                    "&:hover": {
-                      bgcolor: "action.hover",
-                    },
-                    bgcolor:
-                      currentSong?.id === song.id
-                        ? "action.selected"
-                        : "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: { xs: 1, sm: 1.75 },
+                    px: { xs: 0.75, sm: 1.5 },
+                    py: 0.75,
+                    borderRadius: "12px",
+                    bgcolor: isCurrent ? tokens.surface2 : "transparent",
+                    "&:hover": { bgcolor: tokens.surface2 },
+                    "&:hover .track-index, & .track-play:focus-visible .track-index":
+                      { display: "none" },
+                    "&:hover .track-icon, & .track-play:focus-visible .track-icon":
+                      { display: "flex" },
                   }}
-                  onClick={() => handleSongClick(song, idx, songs)}
                 >
-                  <ListItemAvatar>
-                    <Avatar
-                      variant="rounded"
-                      src={song.cover_url}
-                      alt={song.name}
+                  {/* index; the play icon on hover / keyboard focus */}
+                  <IconButton
+                    className="track-play"
+                    onClick={() => handlePlayPause(song, idx)}
+                    aria-label={`${showPause ? "Pause" : "Play"} ${song.name}`}
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      flex: "none",
+                      fontSize: 14,
+                      fontVariantNumeric: "tabular-nums",
+                      color: isCurrent ? "primary.main" : tokens.subtle,
+                      "&:hover": { bgcolor: "transparent" },
+                    }}
+                  >
+                    <Box
+                      component="span"
+                      className="track-index"
+                      sx={{ display: "flex" }}
                     >
-                      <QueueMusic />
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={song.name}
-                    secondary={song.user.username}
+                      {isCurrent ? <GraphicEq fontSize="small" /> : idx + 1}
+                    </Box>
+                    <Box
+                      component="span"
+                      className="track-icon"
+                      sx={{ display: "none", color: tokens.text }}
+                    >
+                      {showPause ? <Pause /> : <PlayArrow />}
+                    </Box>
+                  </IconButton>
+                  <CoverArt
+                    id={song.id}
+                    src={song.cover_url}
+                    ring={4}
+                    sx={{ width: 44, borderRadius: "8px" }}
                   />
-                  <ListItemSecondaryAction>
-                    {isOwner && (
-                      <Tooltip title="Remove from playlist">
-                        <IconButton
-                          onClick={(e) => handleRemoveSong(e, song)}
-                          disabled={removingSongId === song.id}
-                          sx={{ mr: 1 }}
-                        >
-                          <RemoveCircleOutline />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                    <IconButton
-                      onClick={(e) => handleLike(e, song)}
-                      disabled={likingStates[song.id]}
-                      color={song.is_liked ? "error" : "default"}
-                      sx={{ mr: 1 }}
-                    >
-                      <Favorite />
-                    </IconButton>
-                    <IconButton
-                      edge="end"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePlayPause(e, song, idx, songs);
+                  <Box
+                    sx={{
+                      flex: 1,
+                      minWidth: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <Link
+                      component={RouterLink}
+                      to={`/song/${song.id}`}
+                      noWrap
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: 15,
+                        "&, &:visited": { color: isCurrent ? "primary.main" : tokens.text },
                       }}
                     >
-                      {currentSong?.id === song.id && isPlaying ? (
-                        <Pause />
-                      ) : (
-                        <PlayArrow />
-                      )}
-                    </IconButton>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
-            </List>
-          </Paper>
+                      {song.name}
+                    </Link>
+                    <Link
+                      component={RouterLink}
+                      to={`/profile/${song.user.id}`}
+                      noWrap
+                      sx={{ fontSize: 13, "&, &:visited": { color: tokens.muted } }}
+                    >
+                      {song.user.username}
+                    </Link>
+                  </Box>
+                  {isOwner && (
+                    <Tooltip title="Remove from playlist">
+                      <IconButton
+                        onClick={() => handleRemoveSong(song)}
+                        disabled={removingSongId === song.id}
+                        aria-label={`Remove ${song.name} from playlist`}
+                        sx={{ width: 44, height: 44, color: tokens.subtle }}
+                      >
+                        <RemoveCircleOutline fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  <IconButton
+                    onClick={() => handleLike(song)}
+                    disabled={likingStates[song.id]}
+                    aria-label={
+                      song.is_liked ? `Unlike ${song.name}` : `Like ${song.name}`
+                    }
+                    aria-pressed={song.is_liked}
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      color: song.is_liked ? "primary.main" : tokens.subtle,
+                    }}
+                  >
+                    {song.is_liked ? (
+                      <Favorite fontSize="small" />
+                    ) : (
+                      <FavoriteBorder fontSize="small" />
+                    )}
+                  </IconButton>
+                </Box>
+              );
+            })}
+          </Box>
         )}
-
-        {/* Edit Playlist Dialog */}
-        <Dialog
-          open={editOpen}
-          onClose={() => setEditOpen(false)}
-          fullWidth
-          maxWidth="sm"
-        >
-          <DialogTitle>Edit Playlist</DialogTitle>
-          <DialogContent>
-            <TextField
-              label="Title"
-              value={editForm.title}
-              onChange={(e) =>
-                setEditForm((form) => ({ ...form, title: e.target.value }))
-              }
-              required
-              fullWidth
-              margin="normal"
-            />
-            <TextField
-              label="Description"
-              value={editForm.description}
-              onChange={(e) =>
-                setEditForm((form) => ({
-                  ...form,
-                  description: e.target.value,
-                }))
-              }
-              fullWidth
-              multiline
-              minRows={2}
-              margin="normal"
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={editForm.is_private}
-                  onChange={(e) =>
-                    setEditForm((form) => ({
-                      ...form,
-                      is_private: e.target.checked,
-                    }))
-                  }
-                />
-              }
-              label="Private"
-            />
-            {editError && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                {editError}
-              </Alert>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setEditOpen(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              variant="contained"
-              disabled={saving || !editForm.title.trim()}
-            >
-              {saving ? "Saving..." : "Save"}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Delete Confirmation Dialog */}
-        <Dialog
-          open={deleteDialogOpen}
-          onClose={() => setDeleteDialogOpen(false)}
-        >
-          <DialogTitle>Delete Playlist</DialogTitle>
-          <DialogContent>
-            <Typography>
-              Are you sure you want to delete this playlist? This action cannot
-              be undone.
-            </Typography>
-            {deleteError && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                {deleteError}
-              </Alert>
-            )}
-            {deleteSuccess && (
-              <Alert severity="success" sx={{ mt: 2 }}>
-                Playlist deleted!
-              </Alert>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button
-              onClick={() => setDeleteDialogOpen(false)}
-              disabled={deleting}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleDelete} color="error" disabled={deleting}>
-              {deleting ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogActions>
-        </Dialog>
       </Box>
-    </Container>
+
+      {/* Edit Playlist Dialog */}
+      <Dialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        aria-labelledby="edit-playlist-title"
+      >
+        <DialogTitle id="edit-playlist-title">Edit playlist</DialogTitle>
+        <DialogContent>
+          <TextField
+            label="Title"
+            value={editForm.title}
+            onChange={(e) =>
+              setEditForm((form) => ({ ...form, title: e.target.value }))
+            }
+            required
+            fullWidth
+            margin="normal"
+          />
+          <TextField
+            label="Description"
+            value={editForm.description}
+            onChange={(e) =>
+              setEditForm((form) => ({
+                ...form,
+                description: e.target.value,
+              }))
+            }
+            fullWidth
+            multiline
+            minRows={2}
+            margin="normal"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={editForm.is_private}
+                onChange={(e) =>
+                  setEditForm((form) => ({
+                    ...form,
+                    is_private: e.target.checked,
+                  }))
+                }
+              />
+            }
+            label="Private"
+          />
+          {editError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {editError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button
+            onClick={() => setEditOpen(false)}
+            disabled={saving}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            variant="contained"
+            disabled={saving || !editForm.title.trim()}
+          >
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        aria-labelledby="delete-playlist-title"
+      >
+        <DialogTitle id="delete-playlist-title">Delete playlist</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary">
+            Are you sure you want to delete this playlist? This action cannot
+            be undone.
+          </Typography>
+          {deleteError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          {deleteSuccess && (
+            <Alert severity="success" sx={{ mt: 2 }}>
+              Playlist deleted!
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button
+            onClick={() => setDeleteDialogOpen(false)}
+            disabled={deleting}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDelete}
+            color="error"
+            variant="contained"
+            disabled={deleting}
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 };
 

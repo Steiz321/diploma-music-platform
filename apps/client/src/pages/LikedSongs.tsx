@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Container, Typography, Box } from "@mui/material";
+import { Box, CircularProgress, Typography } from "@mui/material";
 import songApi, { Song } from "../api/song";
 import SongCard from "../components/SongCard";
+import { CardGrid, EmptyState } from "../components/CardGrid";
 
 const LikedSongs: React.FC = () => {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -24,59 +25,23 @@ const LikedSongs: React.FC = () => {
     fetchLikedSongs();
   }, []);
 
-  if (loading) {
-    return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography>Loading...</Typography>
-        </Box>
-      </Container>
-    );
-  }
-
-  if (error) {
-    return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography color="error">{error}</Typography>
-        </Box>
-      </Container>
-    );
-  }
-
-  if (songs.length === 0) {
-    return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom>
-            Liked Songs
-          </Typography>
-          <Typography color="text.secondary">
-            You haven't liked any songs yet. Start exploring and like some
-            songs!
-          </Typography>
-        </Box>
-      </Container>
-    );
-  }
-
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Liked Songs
-        </Typography>
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: {
-              xs: "1fr",
-              sm: "1fr 1fr",
-              md: "1fr 1fr 1fr",
-            },
-            gap: 3,
-          }}
-        >
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <Typography variant="h3" component="h1">
+        Liked songs
+      </Typography>
+      {loading ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : error ? (
+        <Typography color="error">{error}</Typography>
+      ) : songs.length === 0 ? (
+        <EmptyState title="No liked songs yet">
+          Tap the heart on a song you enjoy and it will be saved here.
+        </EmptyState>
+      ) : (
+        <CardGrid>
           {songs.map((song, idx) => (
             <SongCard
               key={song.id}
@@ -86,9 +51,9 @@ const LikedSongs: React.FC = () => {
               source={{ type: "liked" }}
             />
           ))}
-        </Box>
-      </Box>
-    </Container>
+        </CardGrid>
+      )}
+    </Box>
   );
 };
 

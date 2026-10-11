@@ -1,28 +1,34 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { IconButton, Box } from "@mui/material";
+import { IconButton, Box, SxProps, Theme } from "@mui/material";
 import { ArrowBack } from "@mui/icons-material";
+import { tokens } from "../theme/tokens";
 
 interface BackButtonProps {
-  sx?: object;
+  sx?: SxProps<Theme>;
 }
 
 const BackButton: React.FC<BackButtonProps> = ({ sx }) => {
   const navigate = useNavigate();
 
   return (
-    <Box sx={{ ...sx }}>
+    <Box sx={sx}>
       <IconButton
         onClick={() => navigate(-1)}
-        size="large"
+        aria-label="Go back"
         sx={{
-          backgroundColor: "background.paper",
+          width: 44,
+          height: 44,
+          bgcolor: tokens.surface,
+          border: `1px solid ${tokens.inputBorder}`,
+          color: tokens.textSecondary,
           "&:hover": {
-            backgroundColor: "action.hover",
+            bgcolor: tokens.surface2,
+            color: tokens.text,
           },
         }}
       >
-        <ArrowBack />
+        <ArrowBack fontSize="small" />
       </IconButton>
     </Box>
   );

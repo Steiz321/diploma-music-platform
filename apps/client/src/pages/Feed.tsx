@@ -1,10 +1,26 @@
-import React, { useEffect, useState } from "react";
-import { Container, Typography, Box, Grid, Tabs, Tab } from "@mui/material";
-import songApi, { Song } from "../api/song";
+import React, { useState } from "react";
+import { Box, CircularProgress, Tab, Tabs, Typography } from "@mui/material";
+import { useQuery } from "@tanstack/react-query";
+import songApi from "../api/song";
+import playlistApi from "../api/playlist";
+import { handleApiError } from "../api/client";
 import RecommendedSongsSection from "../recommendations/RecommendedSongsSection";
-import playlistApi, { Playlist } from "../api/playlist";
+import MixHero, { MixHeroSkeleton } from "../recommendations/MixHero";
 import SongCard from "../components/SongCard";
 import PlaylistCard from "../components/PlaylistCard";
+import { CardGrid, EmptyState } from "../components/CardGrid";
+
+const TABS = ["Songs", "Playlists"] as const;
+
+// read by screen readers, not shown
+const visuallyHidden = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+} as const;
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -12,128 +28,115 @@ interface TabPanelProps {
   value: number;
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
+function TabPanel({ children, value, index }: TabPanelProps) {
   return (
     <div
       role="tabpanel"
       hidden={value !== index}
-      id={`simple-tabpanel-${index}`}
-      aria-labelledby={`simple-tab-${index}`}
-      {...other}
+      id={`feed-tabpanel-${index}`}
+      aria-labelledby={`feed-tab-${index}`}
     >
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+      {value === index && children}
     </div>
   );
 }
 
+const Loading = () => (
+  <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+    <CircularProgress />
+  </Box>
+);
+
 const Feed: React.FC = () => {
-  const [songs, setSongs] = useState<Song[]>([]);
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [songsData, playlistsData] = await Promise.all([
-          songApi.getAllSongs(),
-          playlistApi.getAllPlaylists(),
-        ]);
+  const recommended = useQuery({
+    queryKey: ["recommendations", "for-you"],
+    queryFn: () => songApi.getRecommended(6),
+  });
+  const songs = useQuery({
+    queryKey: ["feed", "songs"],
+    queryFn: () => songApi.getAllSongs(),
+    select: (data) => (Array.isArray(data) ? data : []),
+  });
+  const playlists = useQuery({
+    queryKey: ["feed", "playlists"],
+    queryFn: () => playlistApi.getAllPlaylists(),
+    select: (data) => (Array.isArray(data) ? data : []),
+  });
 
-        // Ensure we have arrays before setting state
-        setSongs(Array.isArray(songsData) ? songsData : []);
-        setPlaylists(Array.isArray(playlistsData) ? playlistsData : []);
-
-        // Log the data for debugging
-        console.log("Songs data:", songsData);
-        console.log("Playlists data:", playlistsData);
-      } catch (err) {
-        console.error("Error fetching data:", err);
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load data. Please try again."
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  };
-
-  if (loading) {
-    return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography>Loading...</Typography>
-        </Box>
-      </Container>
-    );
-  }
-
-  if (error) {
-    return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography color="error">{error}</Typography>
-        </Box>
-      </Container>
-    );
-  }
-
-  const displaySongs = Array.isArray(songs) ? songs : [];
-  const displayPlaylists = Array.isArray(playlists) ? playlists : [];
+  const mix = recommended.data;
+  const hasMix = !!mix && mix.songs.length > 0;
+  const displaySongs = songs.data ?? [];
+  const displayPlaylists = playlists.data ?? [];
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Discover
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      {/* recommendations are optional: on an error the hero is hidden */}
+      {recommended.isLoading ? (
+        <MixHeroSkeleton />
+      ) : hasMix ? (
+        <MixHero data={mix} titleId="mix-h" />
+      ) : null}
+      {!hasMix && (
+        <Typography component="h1" sx={visuallyHidden}>
+          Feed
         </Typography>
-        <RecommendedSongsSection
-          title="For you"
-          fallbackTitle="Popular right now"
-          kind="for-you"
-          load={() => songApi.getRecommended(6)}
-        />
+      )}
 
-        <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+      {hasMix && (
+        <RecommendedSongsSection
+          title="In your mix"
+          fallbackTitle="Popular picks"
+          kind="for-you"
+          data={mix}
+        />
+      )}
+
+      <Box
+        component="section"
+        aria-labelledby="fresh-h"
+        sx={{ display: "flex", flexDirection: "column", gap: 2.25 }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            gap: 1.5,
+            flexWrap: "wrap",
+          }}
+        >
+          <Typography id="fresh-h" variant="h4" component="h2">
+            Fresh in your feed
+          </Typography>
           <Tabs
             value={tabValue}
-            onChange={handleTabChange}
-            aria-label="feed tabs"
+            onChange={(_, value: number) => setTabValue(value)}
+            aria-label="Show songs or playlists"
           >
-            <Tab label={`Songs (${displaySongs.length})`} />
-            <Tab label={`Playlists (${displayPlaylists.length})`} />
+            {TABS.map((label, i) => (
+              <Tab
+                key={label}
+                label={label}
+                id={`feed-tab-${i}`}
+                aria-controls={`feed-tabpanel-${i}`}
+              />
+            ))}
           </Tabs>
         </Box>
 
         <TabPanel value={tabValue} index={0}>
-          {displaySongs.length === 0 ? (
-            <Typography color="text.secondary" sx={{ mt: 2 }}>
-              No songs available
-            </Typography>
+          {songs.isLoading ? (
+            <Loading />
+          ) : songs.error ? (
+            <Typography color="error">{handleApiError(songs.error)}</Typography>
+          ) : displaySongs.length === 0 ? (
+            <EmptyState title="No songs yet">
+              New uploads will show up here.
+            </EmptyState>
           ) : (
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: "1fr",
-                  sm: "1fr 1fr",
-                  md: "1fr 1fr 1fr",
-                },
-                gap: 3,
-              }}
-            >
+            <CardGrid>
               {displaySongs.map((song, idx) => (
                 <SongCard
                   key={song.id}
@@ -143,35 +146,31 @@ const Feed: React.FC = () => {
                   source={{ type: "feed" }}
                 />
               ))}
-            </Box>
+            </CardGrid>
           )}
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
-          {displayPlaylists.length === 0 ? (
-            <Typography color="text.secondary" sx={{ mt: 2 }}>
-              No playlists available
+          {playlists.isLoading ? (
+            <Loading />
+          ) : playlists.error ? (
+            <Typography color="error">
+              {handleApiError(playlists.error)}
             </Typography>
+          ) : displayPlaylists.length === 0 ? (
+            <EmptyState title="No playlists yet">
+              Playlists people share will show up here.
+            </EmptyState>
           ) : (
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: "1fr",
-                  sm: "1fr 1fr",
-                  md: "1fr 1fr 1fr",
-                },
-                gap: 3,
-              }}
-            >
+            <CardGrid>
               {displayPlaylists.map((playlist) => (
                 <PlaylistCard key={playlist.id} playlist={playlist} />
               ))}
-            </Box>
+            </CardGrid>
           )}
         </TabPanel>
       </Box>
-    </Container>
+    </Box>
   );
 };
 

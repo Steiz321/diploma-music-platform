@@ -1,10 +1,13 @@
-import { TAG_VOCABULARY, VERSE_KINDS } from '@platform/contracts';
-
 /**
- * JSON schema for Groq structured outputs in strict mode: the model can only
- * answer with this shape, and tags only with values of the vocabulary.
- * Strict mode needs every field required and additionalProperties: false;
- * item counts (1–3 tags) are checked by analysis.mapper.
+ * JSON schema for Groq structured outputs in strict mode: the shape of the
+ * answer. Strict mode needs every field required and additionalProperties:
+ * false.
+ *
+ * Tag values and verse kinds are plain strings on purpose: Groq validates the
+ * answer after generation and rejects all of it when one value is outside an
+ * enum (e.g. an invented topic), losing the structure and the valid tags. The
+ * allowed values are listed in the prompt; analysis.mapper keeps only values
+ * of the vocabulary and checks the counts (1–3 tags).
  */
 export const ANALYSIS_SCHEMA = {
   type: 'object',
@@ -19,7 +22,7 @@ export const ANALYSIS_SCHEMA = {
         additionalProperties: false,
         required: ['kind', 'lines'],
         properties: {
-          kind: { type: 'string', enum: [...VERSE_KINDS] },
+          kind: { type: 'string' },
           lines: {
             type: 'array',
             items: {
@@ -40,15 +43,9 @@ export const ANALYSIS_SCHEMA = {
       additionalProperties: false,
       required: ['mood', 'topics', 'energy'],
       properties: {
-        mood: {
-          type: 'array',
-          items: { type: 'string', enum: [...TAG_VOCABULARY.mood] },
-        },
-        topics: {
-          type: 'array',
-          items: { type: 'string', enum: [...TAG_VOCABULARY.topics] },
-        },
-        energy: { type: 'string', enum: [...TAG_VOCABULARY.energy] },
+        mood: { type: 'array', items: { type: 'string' } },
+        topics: { type: 'array', items: { type: 'string' } },
+        energy: { type: 'string' },
       },
     },
   },

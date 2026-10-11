@@ -1,17 +1,11 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  Card,
-  CardContent,
-  CardMedia,
-  Typography,
-  Box,
-  IconButton,
-  Avatar,
-} from "@mui/material";
-import { QueueMusic, Favorite } from "@mui/icons-material";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { Box, Card, IconButton, Link, Typography } from "@mui/material";
+import { Favorite, FavoriteBorder } from "@mui/icons-material";
 import { Playlist } from "../api/playlist";
 import playlistApi from "../api/playlist";
+import { tokens } from "../theme/tokens";
+import CoverArt from "./CoverArt";
 
 interface PlaylistCardProps {
   playlist: Playlist;
@@ -26,10 +20,8 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({ playlist }) => {
     navigate(`/playlist/${playlist.id}`);
   };
 
-  const handleUserClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigate(`/profile/${playlist.user_id}`);
-  };
+  // links inside the card navigate themselves
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -46,72 +38,74 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({ playlist }) => {
     }
   };
 
+  const count = playlist.songs_count;
+
   return (
     <Card
-      sx={{
-        maxWidth: 345,
-        cursor: "pointer",
-        transition: "transform 0.2s",
-        "&:hover": {
-          transform: "scale(1.02)",
-        },
-      }}
+      component="article"
       onClick={handleClick}
+      sx={{
+        cursor: "pointer",
+        p: 1.5,
+        display: "flex",
+        flexDirection: "column",
+        gap: 1.5,
+        minWidth: 0,
+        transition: "border-color 0.2s",
+        "&:hover": { borderColor: tokens.lineStrong },
+      }}
     >
-      <CardMedia
-        component="img"
-        height="200"
-        image={playlist.cover_url}
-        alt={playlist.title}
-      />
-      <CardContent>
-        <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-          <QueueMusic sx={{ mr: 1 }} />
-          <Typography variant="h6" component="div" sx={{ flex: 1 }}>
-            {playlist.title}
-          </Typography>
-          <IconButton
-            size="small"
-            onClick={handleLike}
-            disabled={isLiking}
-            color={isLiked ? "error" : "default"}
+      <CoverArt id={playlist.id} src={playlist.cover_url} />
+
+      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5, px: 0.5, pb: 0.5 }}>
+        <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 0.25 }}>
+          <Link
+            component={RouterLink}
+            to={`/playlist/${playlist.id}`}
+            onClick={stop}
+            sx={{
+              fontWeight: 600,
+              fontSize: 15,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
           >
-            <Favorite />
-          </IconButton>
-        </Box>
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            cursor: "pointer",
-            "&:hover": {
-              textDecoration: "underline",
-            },
-          }}
-          onClick={handleUserClick}
-        >
-          <Avatar
-            src={playlist.user.avatar}
-            alt={playlist.user.username}
-            sx={{ width: 24, height: 24, mr: 1 }}
-          />
-          <Typography variant="body2" color="text.secondary">
-            {playlist.user.username}
-          </Typography>
-        </Box>
-        {playlist.description && (
+            {playlist.title}
+          </Link>
           <Typography
             variant="body2"
-            color="text.secondary"
-            sx={{ mt: 1, overflow: "hidden", textOverflow: "ellipsis" }}
+            sx={{
+              fontSize: 13,
+              color: tokens.muted,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
           >
-            {playlist.description}
+            <Link component={RouterLink} to={`/profile/${playlist.user_id}`} onClick={stop}>
+              {playlist.user.username}
+            </Link>
+            {typeof count === "number" &&
+              ` · ${count} ${count === 1 ? "song" : "songs"}`}
           </Typography>
-        )}
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          {playlist.songs_count} {playlist.songs_count === 1 ? "song" : "songs"}
-        </Typography>
-      </CardContent>
+        </Box>
+        <IconButton
+          onClick={handleLike}
+          disabled={isLiking}
+          aria-label={isLiked ? `Unlike ${playlist.title}` : `Like ${playlist.title}`}
+          aria-pressed={isLiked}
+          sx={{
+            width: 44,
+            height: 44,
+            mt: -0.75,
+            mr: -0.75,
+            color: isLiked ? "primary.main" : tokens.subtle,
+          }}
+        >
+          {isLiked ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
+        </IconButton>
+      </Box>
     </Card>
   );
 };

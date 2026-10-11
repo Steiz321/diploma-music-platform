@@ -1,14 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
 import {
-  Container,
   Typography,
   Box,
-  Paper,
   IconButton,
-  Grid,
   Avatar,
-  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -17,27 +13,58 @@ import {
   Alert,
   Chip,
   CircularProgress,
+  Link,
+  Tooltip,
 } from "@mui/material";
 import {
   PlayArrow,
   Favorite,
+  FavoriteBorder,
   Pause,
   Person,
-  Headphones,
-  AccessTime,
   PlaylistAdd,
-  Delete,
+  DeleteOutline,
 } from "@mui/icons-material";
 import songApi, { Song } from "../api/song";
-import { usePlayer } from "../player/PlayerContext";
+import { usePlayer } from "../player/usePlayer";
 import BackButton from "../components/BackButton";
 import AddToPlaylistDialog from "../components/AddToPlaylistDialog";
+import CoverArt from "../components/CoverArt";
+import { WaveformIcon } from "../components/layout/Logo";
+import LyricsPanel from "../lyrics/LyricsPanel";
 import RecommendedSongsSection from "../recommendations/RecommendedSongsSection";
+import { fonts, tokens } from "../theme/tokens";
 
 const LYRICS_POLL_INTERVAL_MS = 5000;
 
 const formatTag = (tag: string) =>
   (tag.charAt(0).toUpperCase() + tag.slice(1)).replace(/_/g, " ");
+
+const formatListens = (count: number): string => {
+  if (count >= 1000000) {
+    return `${(count / 1000000).toFixed(1)}M`;
+  }
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1)}K`;
+  }
+  return count.toString();
+};
+
+const formatDate = (date: Date): string =>
+  new Date(date).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+/** round icon button of the action row (44px target) */
+const actionSx = {
+  width: 48,
+  height: 48,
+  bgcolor: tokens.surface2,
+  color: tokens.textSecondary,
+  "&:hover": { bgcolor: tokens.lineStrong, color: tokens.text },
+} as const;
 
 const SongDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -87,6 +114,8 @@ const SongDetail: React.FC = () => {
                   ...prev,
                   text: data.text,
                   tags: data.tags,
+                  language: data.language,
+                  lyrics: data.lyrics,
                   transcription_status: data.transcription_status,
                 }
               : data
@@ -102,27 +131,20 @@ const SongDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography>Loading...</Typography>
-        </Box>
-      </Container>
+      <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+        <CircularProgress aria-label="Loading song" />
+      </Box>
     );
   }
 
   if (error || !song) {
-    return (
-      <Container maxWidth="lg">
-        <Box sx={{ mt: 4 }}>
-          <Typography color="error">{error || "Song not found"}</Typography>
-        </Box>
-      </Container>
-    );
+    return <Typography color="error">{error || "Song not found"}</Typography>;
   }
 
   const isOwner = currentUserId === song.user_id;
 
-  const isCurrent = currentSong && currentSong.id === song.id;
+  const isCurrent = currentSong?.id === song.id;
+  const showPause = isCurrent && isPlaying;
 
   const handlePlayPause = () => {
     if (isCurrent) {
@@ -138,6 +160,7 @@ const SongDetail: React.FC = () => {
         author: song.user.username,
         audio: song.audio,
         is_liked: song.is_liked,
+        cover_url: song.cover_url,
       };
       playSong(playerSong, [playerSong], 0, { type: "song_page" });
     }
@@ -157,28 +180,6 @@ const SongDetail: React.FC = () => {
     }
   };
 
-  const handleUserClick = () => {
-    navigate(`/profile/${song.user_id}`);
-  };
-
-  const formatListens = (count: number): string => {
-    if (count >= 1000000) {
-      return `${(count / 1000000).toFixed(1)}M`;
-    }
-    if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K`;
-    }
-    return count.toString();
-  };
-
-  const formatDate = (date: Date): string => {
-    return new Date(date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
-
   const handleDelete = async () => {
     setDeleting(true);
     setDeleteError(null);
@@ -189,232 +190,249 @@ const SongDetail: React.FC = () => {
         navigate("/");
       }, 1200);
     } catch (err) {
+      console.error("Error deleting song:", err);
       setDeleteError("Failed to delete song");
     } finally {
       setDeleting(false);
     }
   };
 
+  const tags = song.tags;
+  const language = song.language ?? tags?.language ?? null;
+  const listensLabel = `${formatListens(song.listens)} ${
+    song.listens === 1 ? "listen" : "listens"
+  }`;
+
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: 4 }}>
-        <BackButton sx={{ mb: 2 }} />
-        <Paper sx={{ p: 4 }}>
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            <Box sx={{ width: { xs: "100%", md: "30%" } }}>
-              <img
-                src={song.cover_url}
-                alt={song.name}
-                style={{
-                  width: "100%",
-                  height: "auto",
-                  borderRadius: "8px",
-                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
-                }}
-              />
-            </Box>
-            <Box
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <BackButton />
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "minmax(0, 1fr)",
+              md: "minmax(0, 5fr) minmax(0, 6fr)",
+            },
+            gap: { xs: 3, md: 5 },
+            alignItems: "start",
+          }}
+        >
+          {/* cover and info */}
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <CoverArt
+              id={song.id}
+              src={song.cover_url}
+              ring={28}
               sx={{
-                width: { xs: "100%", md: "calc(70% - 32px)" },
-                display: "flex",
-                flexDirection: "column",
+                width: "100%",
+                borderRadius: "20px",
+                maxWidth: { xs: 320, md: 440 },
+                boxShadow: `0 0 0 1px ${tokens.cardBorder}`,
               }}
-            >
+            />
+
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Typography
+                component="span"
+                sx={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: tokens.subtle,
+                }}
+              >
+                Song
+              </Typography>
+              <Typography
+                variant="h2"
+                component="h1"
+                sx={{ fontFamily: fonts.heading, overflowWrap: "anywhere" }}
+              >
+                {song.name}
+              </Typography>
               <Box
                 sx={{
                   display: "flex",
-                  flexDirection: "column",
-                  height: "100%",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  columnGap: 1.5,
+                  rowGap: 1,
+                  color: tokens.muted,
+                  fontSize: 14,
                 }}
               >
-                <Typography variant="overline" color="text.secondary">
-                  Song
-                </Typography>
-                <Typography variant="h3" component="h1" gutterBottom>
-                  {song.name}
-                </Typography>
-
-                {/* User Info */}
-                <Box
+                <Link
+                  component={RouterLink}
+                  to={`/profile/${song.user_id}`}
                   sx={{
-                    display: "flex",
+                    display: "inline-flex",
                     alignItems: "center",
-                    mb: 2,
-                    cursor: "pointer",
-                    "&:hover": {
-                      textDecoration: "underline",
-                    },
+                    gap: 1,
+                    minHeight: 44,
+                    "&, &:visited": { color: tokens.text },
+                    fontWeight: 600,
+                    fontSize: 15,
                   }}
-                  onClick={handleUserClick}
                 >
-                  {song.user.avatar ? (
-                    <Avatar
-                      src={song.user.avatar}
-                      alt={song.user.username}
-                      sx={{ width: 40, height: 40, mr: 2 }}
-                    />
-                  ) : (
-                    <Avatar sx={{ width: 40, height: 40, mr: 2 }}>
-                      <Person />
-                    </Avatar>
-                  )}
-                  <Typography variant="h6">{song.user.username}</Typography>
-                </Box>
-
-                {/* Song Stats */}
-                <Box sx={{ display: "flex", gap: 3, mb: 3 }}>
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    <Headphones sx={{ mr: 1, color: "text.secondary" }} />
-                    <Typography variant="body2" color="text.secondary">
-                      {formatListens(song.listens)} listens
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    <AccessTime sx={{ mr: 1, color: "text.secondary" }} />
-                    <Typography variant="body2" color="text.secondary">
-                      {formatDate(song.created_at)}
-                    </Typography>
-                  </Box>
-                </Box>
-
-                <Divider sx={{ my: 2 }} />
-
-                {/* Tags from the lyrics analysis */}
-                {song.tags && (
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 2 }}>
-                    {[...song.tags.mood, ...song.tags.topics].map((tag) => (
-                      <Chip key={tag} label={formatTag(tag)} size="small" />
-                    ))}
-                    <Chip
-                      label={`${formatTag(song.tags.energy)} energy`}
-                      size="small"
-                      variant="outlined"
-                    />
-                  </Box>
-                )}
-
-                {isProcessing && (
-                  <Box
-                    sx={{ display: "flex", alignItems: "center", gap: 1, mb: 3 }}
+                  <Avatar
+                    src={song.user.avatar ?? undefined}
+                    alt=""
+                    sx={{ width: 32, height: 32, bgcolor: tokens.surface2 }}
                   >
-                    <CircularProgress size={16} />
-                    <Typography variant="body2" color="text.secondary">
-                      Lyrics are being processed…
-                    </Typography>
-                  </Box>
-                )}
-                {song.transcription_status === "no_lyrics" && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Instrumental — no lyrics
-                  </Typography>
-                )}
-                {song.transcription_status === "failed" && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Lyrics are not available
-                  </Typography>
-                )}
-
-                {/* Lyrics */}
-                {song.text && (
-                  <Typography
-                    variant="body1"
-                    color="text.secondary"
-                    sx={{
-                      mb: 3,
-                      whiteSpace: "pre-wrap",
-                      flex: 1,
-                    }}
-                  >
-                    {song.text}
-                  </Typography>
-                )}
-
-                {/* Controls */}
-                <Box sx={{ display: "flex", gap: 2 }}>
-                  <IconButton
-                    size="large"
-                    color="primary"
-                    onClick={handlePlayPause}
-                    sx={{
-                      width: 56,
-                      height: 56,
-                      backgroundColor: "primary.main",
-                      color: "white",
-                      "&:hover": {
-                        backgroundColor: "primary.dark",
-                      },
-                    }}
-                  >
-                    {isCurrent && isPlaying ? (
-                      <Pause fontSize="large" />
-                    ) : (
-                      <PlayArrow fontSize="large" />
-                    )}
-                  </IconButton>
-                  <IconButton
-                    size="large"
-                    onClick={handleLike}
-                    disabled={isLiking}
-                    sx={{
-                      width: 56,
-                      height: 56,
-                      border: 1,
-                      borderColor: song.is_liked ? "error.main" : "divider",
-                    }}
-                    color={song.is_liked ? "error" : "default"}
-                  >
-                    <Favorite fontSize="large" />
-                  </IconButton>
-                  <IconButton
-                    size="large"
-                    onClick={() => setAddToPlaylistOpen(true)}
-                    sx={{
-                      width: 56,
-                      height: 56,
-                      border: 1,
-                      borderColor: "divider",
-                    }}
-                  >
-                    <PlaylistAdd fontSize="large" />
-                  </IconButton>
-                  {isOwner && (
-                    <IconButton
-                      size="large"
-                      color="error"
-                      onClick={() => setDeleteDialogOpen(true)}
-                      sx={{ width: 56, height: 56 }}
-                    >
-                      <Delete fontSize="large" />
-                    </IconButton>
-                  )}
-                </Box>
+                    <Person fontSize="small" />
+                  </Avatar>
+                  {song.user.username}
+                </Link>
+                <span aria-hidden>·</span>
+                <span>{listensLabel}</span>
+                <span aria-hidden>·</span>
+                <span>{formatDate(song.created_at)}</span>
               </Box>
             </Box>
+
+            {/* actions */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+              <IconButton
+                onClick={handlePlayPause}
+                aria-label={showPause ? "Pause" : "Play"}
+                sx={{
+                  width: 60,
+                  height: 60,
+                  bgcolor: "primary.main",
+                  color: "primary.contrastText",
+                  "&:hover": { bgcolor: "primary.light" },
+                }}
+              >
+                {showPause ? (
+                  <Pause fontSize="large" />
+                ) : (
+                  <PlayArrow fontSize="large" />
+                )}
+              </IconButton>
+              <IconButton
+                onClick={handleLike}
+                disabled={isLiking}
+                aria-label={song.is_liked ? "Unlike" : "Like"}
+                aria-pressed={song.is_liked}
+                sx={{
+                  ...actionSx,
+                  color: song.is_liked ? "primary.main" : actionSx.color,
+                }}
+              >
+                {song.is_liked ? <Favorite /> : <FavoriteBorder />}
+              </IconButton>
+              <Tooltip title="Add to playlist">
+                <IconButton
+                  onClick={() => setAddToPlaylistOpen(true)}
+                  aria-label="Add to playlist"
+                  sx={actionSx}
+                >
+                  <PlaylistAdd />
+                </IconButton>
+              </Tooltip>
+              {isOwner && (
+                <Tooltip title="Delete song">
+                  <IconButton
+                    onClick={() => setDeleteDialogOpen(true)}
+                    aria-label="Delete song"
+                    sx={{
+                      ...actionSx,
+                      "&:hover": { bgcolor: tokens.lineStrong, color: "error.main" },
+                    }}
+                  >
+                    <DeleteOutline />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Box>
+
+            {/* tags from the AI analysis of the lyrics */}
+            {(tags || isProcessing) && (
+              <Box
+                component="section"
+                aria-labelledby="about-heading"
+                sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}
+              >
+                <Typography
+                  id="about-heading"
+                  component="h2"
+                  sx={{
+                    m: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    color: "primary.main",
+                  }}
+                >
+                  <WaveformIcon size={14} />
+                  What this song is about
+                </Typography>
+                {tags ? (
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                    {tags.mood.map((tag) => (
+                      <Chip key={`mood-${tag}`} label={formatTag(tag)} />
+                    ))}
+                    {tags.topics.map((tag) => (
+                      <Chip
+                        key={`topic-${tag}`}
+                        label={formatTag(tag)}
+                        variant="outlined"
+                      />
+                    ))}
+                    {tags.energy && (
+                      <Chip
+                        label={`${formatTag(tags.energy)} energy`}
+                        variant="outlined"
+                      />
+                    )}
+                    {language && (
+                      <Chip
+                        label={language.toUpperCase()}
+                        variant="outlined"
+                        aria-label={`Language: ${language}`}
+                      />
+                    )}
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    Tags will appear once the song is analysed.
+                  </Typography>
+                )}
+              </Box>
+            )}
           </Box>
-        </Paper>
-        <Box sx={{ mt: 4 }}>
-          <RecommendedSongsSection
-            title="Similar tracks"
-            fallbackTitle="You may also like"
-            kind="similar"
-            load={() => songApi.getSimilar(song.id, 6)}
-            reloadKey={song.id}
-          />
+
+          <LyricsPanel song={song} isCurrent={isCurrent} />
         </Box>
       </Box>
+
+      <RecommendedSongsSection
+        title="Similar tracks"
+        fallbackTitle="You may also like"
+        kind="similar"
+        load={() => songApi.getSimilar(song.id, 6)}
+        reloadKey={song.id}
+      />
+
       <AddToPlaylistDialog
         open={addToPlaylistOpen}
         onClose={() => setAddToPlaylistOpen(false)}
         songId={song.id}
       />
-      {/* Delete Confirmation Dialog */}
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
+        aria-labelledby="delete-song-title"
       >
-        <DialogTitle>Delete Song</DialogTitle>
+        <DialogTitle id="delete-song-title">Delete song</DialogTitle>
         <DialogContent>
-          <Typography>
+          <Typography color="text.secondary">
             Are you sure you want to delete this song? This action cannot be
             undone.
           </Typography>
@@ -429,19 +447,25 @@ const SongDetail: React.FC = () => {
             </Alert>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button
             onClick={() => setDeleteDialogOpen(false)}
             disabled={deleting}
+            variant="outlined"
           >
             Cancel
           </Button>
-          <Button onClick={handleDelete} color="error" disabled={deleting}>
+          <Button
+            onClick={handleDelete}
+            color="error"
+            variant="contained"
+            disabled={deleting}
+          >
             {deleting ? "Deleting..." : "Delete"}
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </Box>
   );
 };
 

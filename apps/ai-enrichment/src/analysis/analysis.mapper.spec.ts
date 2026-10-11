@@ -5,6 +5,7 @@ import {
   lyricsToText,
   toStructuredLyrics,
   toTags,
+  unknownTagValues,
 } from './analysis.mapper';
 
 const segment = (start: number, text: string): TranscriptionSegment => ({
@@ -127,6 +128,30 @@ describe('analysis.mapper', () => {
           'uk',
         ),
       ).toThrow(InvalidAnalysisError);
+    });
+  });
+
+  describe('unknownTagValues', () => {
+    it('names the values outside the vocabulary', () => {
+      expect(
+        unknownTagValues(
+          output({
+            tags: {
+              mood: ['playful', 'grumpy'],
+              topics: ['love', 'teen', 'party'],
+              energy: 'high',
+            },
+          }),
+        ),
+      ).toEqual(['mood:grumpy', 'topics:teen']);
+    });
+
+    it('is empty when every value is known', () => {
+      expect(
+        unknownTagValues(
+          output({ tags: { mood: ['sad'], topics: ['love'], energy: 'low' } }),
+        ),
+      ).toEqual([]);
     });
   });
 });

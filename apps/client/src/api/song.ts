@@ -16,6 +16,33 @@ export interface SongTags {
   language: string;
 }
 
+// Mirrors StructuredLyrics of @platform/contracts (the client does not depend
+// on the contracts package)
+export type VerseKind =
+  | "verse"
+  | "chorus"
+  | "bridge"
+  | "intro"
+  | "outro"
+  | "other";
+
+export interface LyricsLine {
+  /** seconds from the start of the track */
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface LyricsVerse {
+  kind: VerseKind;
+  lines: LyricsLine[];
+}
+
+/** Lyrics split into verses, every line with its timing. */
+export interface StructuredLyrics {
+  verses: LyricsVerse[];
+}
+
 export interface Song {
   id: number;
   name: string;
@@ -28,6 +55,10 @@ export interface Song {
   listens: number;
   transcription_status?: TranscriptionStatus;
   tags?: SongTags | null;
+  /** detected language of the lyrics, e.g. "en" (GET /song/:id only) */
+  language?: string | null;
+  /** timed lyrics (GET /song/:id only); null when not transcribed */
+  lyrics?: StructuredLyrics | null;
   created_at: Date;
   updated_at: Date;
   user: User;

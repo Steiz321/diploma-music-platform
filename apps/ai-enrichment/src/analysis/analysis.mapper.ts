@@ -3,6 +3,7 @@ import {
   normalizeTags,
   SongTags,
   StructuredLyrics,
+  TAG_VOCABULARY,
   TranscriptionSegment,
   VERSE_KINDS,
   VerseKind,
@@ -64,6 +65,27 @@ export const toTags = (
     );
   }
   return tags;
+};
+
+/**
+ * Tag values the model invented ("group:value"): toTags drops them, they are
+ * reported so a prompt or vocabulary problem is visible.
+ */
+export const unknownTagValues = (output: AnalysisOutput): string[] => {
+  const tags = output.tags ?? ({} as Partial<AnalysisOutput['tags']>);
+  const outside = (group: keyof typeof TAG_VOCABULARY, values: unknown[]) =>
+    values
+      .filter(
+        (value) =>
+          !(TAG_VOCABULARY[group] as readonly unknown[]).includes(value),
+      )
+      .map((value) => `${group}:${value}`);
+
+  return [
+    ...outside('mood', Array.isArray(tags.mood) ? tags.mood : []),
+    ...outside('topics', Array.isArray(tags.topics) ? tags.topics : []),
+    ...outside('energy', tags.energy === undefined ? [] : [tags.energy]),
+  ];
 };
 
 /** Plain text: one line per line, an empty line between verses. */

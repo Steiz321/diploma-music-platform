@@ -1,11 +1,17 @@
 import { Logger } from '@nestjs/common';
-import Groq from 'groq-sdk';
+import Groq, { BadRequestError } from 'groq-sdk';
 import { AnalysisInput, AnalysisOutput, Analyzer } from './analyzer';
 import { ANALYSIS_SCHEMA } from './analysis-schema';
+import { InvalidAnalysisError } from './analysis.mapper';
 import { buildAnalysisRequest, SYSTEM_PROMPT } from './prompt';
 import { groqRetry, withRetry } from '../common/retry.util';
 
 const MODEL = 'openai/gpt-oss-120b';
+
+/** Groq generated an answer that does not match the JSON schema. */
+const isSchemaMismatch = (err: unknown): boolean =>
+  err instanceof BadRequestError &&
+  err.message.includes('json_validate_failed');
 
 export class GroqAnalyzer implements Analyzer {
   readonly model = MODEL;
@@ -20,7 +26,27 @@ export class GroqAnalyzer implements Analyzer {
   }
 
   async analyze(input: AnalysisInput): Promise<AnalysisOutput> {
-    const completion = await withRetry(
+    const completion = await this.complete(input).catch((err) => {
+      // an unusable answer: the service may ask once more
+      throw isSchemaMismatch(err)
+        ? new InvalidAnalysisError(
+            `answer does not match the schema: ${err.message}`,
+          )
+        : err;
+    });
+
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error(
+        `Empty LLM response (finish_reason: ${completion.choices[0]?.finish_reason})`,
+      );
+    }
+
+    return JSON.parse(content) as AnalysisOutput;
+  }
+
+  private complete(input: AnalysisInput) {
+    return withRetry(
       () =>
         this.groq.chat.completions.create({
           model: MODEL,
@@ -43,14 +69,5 @@ export class GroqAnalyzer implements Analyzer {
         }),
       groqRetry('Groq analysis', this.logger),
     );
-
-    const content = completion.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error(
-        `Empty LLM response (finish_reason: ${completion.choices[0]?.finish_reason})`,
-      );
-    }
-
-    return JSON.parse(content) as AnalysisOutput;
   }
 }

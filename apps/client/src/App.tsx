@@ -3,200 +3,71 @@ import {
   Routes,
   Route,
   Navigate,
+  Outlet,
 } from "react-router-dom";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import theme from "./theme/theme";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
 import Feed from "./pages/Feed";
 import Profile from "./pages/Profile";
 import LikedSongs from "./pages/LikedSongs";
 import LikedPlaylists from "./pages/LikedPlaylists";
-import Header from "./components/Header";
-import { Box } from "@mui/material";
 import CreateSong from "./pages/CreateSong";
 import CreatePlaylist from "./pages/CreatePlaylist";
 import SongDetail from "./pages/SongDetail";
+import Search from "./pages/Search";
 import PlayerProvider from "./player/PlayerContext";
-import BottomPlayer from "./player/BottomPlayer";
 import PlaylistDetails from "./pages/PlaylistDetails";
+import AppLayout from "./components/layout/AppLayout";
 
-const theme = createTheme({
-  palette: {
-    mode: "light",
-    primary: {
-      main: "#000000",
-    },
-    secondary: {
-      main: "#dc004e",
-    },
-  },
-  components: {
-    MuiButtonBase: {
-      styleOverrides: {
-        root: {
-          "&:focus": {
-            outline: "none",
-          },
-        },
-      },
-    },
-    MuiIconButton: {
-      styleOverrides: {
-        root: {
-          "&:focus": {
-            outline: "none",
-          },
-        },
-      },
-    },
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          "&:focus": {
-            outline: "none",
-          },
-        },
-      },
-    },
-    MuiLink: {
-      styleOverrides: {
-        root: {
-          color: "inherit",
-          textDecoration: "none",
-          "&:visited": {
-            color: "inherit",
-          },
-          "&:hover": {
-            textDecoration: "underline",
-          },
-        },
-      },
-    },
-  },
-  typography: {
-    button: {
-      textTransform: "none",
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
     },
   },
 });
 
-const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
+// all signed-in pages share the layout (sidebar, top bar, player)
+const PrivateRoute = () => {
   const token = localStorage.getItem("token");
-  return token ? <>{children}</> : <Navigate to="/login" />;
+  return token ? <Outlet /> : <Navigate to="/login" />;
 };
 
 function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Router>
-        <PlayerProvider>
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              minHeight: "100vh",
-              width: "100%",
-            }}
-          >
-            <Header />
-            <Box
-              component="main"
-              sx={{
-                flexGrow: 1,
-                py: 3,
-                width: "100%",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-              }}
-            >
-              <Box sx={{ width: "100%", maxWidth: "1200px", px: 2 }}>
-                <Routes>
-                  <Route path="/register" element={<Register />} />
-                  <Route path="/login" element={<Login />} />
-                  <Route
-                    path="/feed"
-                    element={
-                      <PrivateRoute>
-                        <Feed />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/profile/:id"
-                    element={
-                      <PrivateRoute>
-                        <Profile />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/my-profile"
-                    element={
-                      <PrivateRoute>
-                        <Profile />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/liked"
-                    element={
-                      <PrivateRoute>
-                        <LikedSongs />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/liked-playlists"
-                    element={
-                      <PrivateRoute>
-                        <LikedPlaylists />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/create-song"
-                    element={
-                      <PrivateRoute>
-                        <CreateSong />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/create-playlist"
-                    element={
-                      <PrivateRoute>
-                        <CreatePlaylist />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/song/:id"
-                    element={
-                      <PrivateRoute>
-                        <SongDetail />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/playlist/:id"
-                    element={
-                      <PrivateRoute>
-                        <PlaylistDetails />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route path="/" element={<Navigate to="/feed" replace />} />
-                </Routes>
-              </Box>
-            </Box>
-            <BottomPlayer />
-          </Box>
-        </PlayerProvider>
-      </Router>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Router>
+          <PlayerProvider>
+            <Routes>
+              <Route path="/register" element={<Register />} />
+              <Route path="/login" element={<Login />} />
+              <Route element={<PrivateRoute />}>
+                <Route element={<AppLayout />}>
+                  <Route path="/feed" element={<Feed />} />
+                  <Route path="/search" element={<Search />} />
+                  <Route path="/profile/:id" element={<Profile />} />
+                  <Route path="/my-profile" element={<Profile />} />
+                  <Route path="/liked" element={<LikedSongs />} />
+                  <Route path="/liked-playlists" element={<LikedPlaylists />} />
+                  <Route path="/create-song" element={<CreateSong />} />
+                  <Route path="/create-playlist" element={<CreatePlaylist />} />
+                  <Route path="/song/:id" element={<SongDetail />} />
+                  <Route path="/playlist/:id" element={<PlaylistDetails />} />
+                </Route>
+              </Route>
+              <Route path="/" element={<Navigate to="/feed" replace />} />
+            </Routes>
+          </PlayerProvider>
+        </Router>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
 

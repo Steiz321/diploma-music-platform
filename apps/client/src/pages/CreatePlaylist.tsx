@@ -1,33 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Container,
-  Typography,
-  Box,
-  TextField,
-  Button,
-  Paper,
-} from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Box, TextField, Button, Alert } from "@mui/material";
 import playlistApi from "../api/playlist";
-import BackButton from "../components/BackButton";
-
-const StyledPaper = styled(Paper)(({ theme }) => ({
-  marginTop: theme.spacing(4),
-  padding: theme.spacing(4),
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-}));
-
-const StyledForm = styled("form")(({ theme }) => ({
-  width: "100%",
-  marginTop: theme.spacing(1),
-}));
-
-const StyledButton = styled(Button)(({ theme }) => ({
-  margin: theme.spacing(3, 0, 2),
-}));
+import FormCard from "../components/FormCard";
+import FileDropzone from "../components/FileDropzone";
 
 interface CreatePlaylistForm {
   title: string;
@@ -83,12 +59,14 @@ const CreatePlaylist: React.FC = () => {
           ...prev,
           [name]: files[0],
         }));
+        setErrors((prev) => ({ ...prev, cover: undefined }));
       }
     } else if (name !== "cover") {
       setFormData((prev) => ({
         ...prev,
         [name]: value,
       }));
+      setErrors((prev) => ({ ...prev, [name]: undefined }));
     }
   };
 
@@ -119,83 +97,63 @@ const CreatePlaylist: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="md">
-      <BackButton sx={{ mt: 4, mb: 2 }} />
-      <StyledPaper elevation={6}>
-        <Typography component="h1" variant="h4" gutterBottom>
-          Create New Playlist
-        </Typography>
-        <StyledForm onSubmit={handleSubmit} encType="multipart/form-data">
-          <TextField
-            variant="outlined"
-            margin="normal"
-            required
-            fullWidth
-            id="title"
-            label="Playlist Name"
-            name="title"
-            autoFocus
-            value={formData.title}
-            onChange={handleChange}
-            error={!!errors.title}
-            helperText={errors.title}
-          />
-          <TextField
-            variant="outlined"
-            margin="normal"
-            fullWidth
-            id="description"
-            label="Description"
-            name="description"
-            multiline
-            rows={4}
-            value={formData.description}
-            onChange={handleChange}
-            error={!!errors.description}
-            helperText={errors.description}
-          />
-          <Box sx={{ mt: 2, width: "100%" }}>
-            <input
-              accept="image/*"
-              style={{ display: "none" }}
-              id="cover-upload"
-              type="file"
-              name="cover"
-              onChange={handleChange}
-            />
-            <label htmlFor="cover-upload">
-              <Button
-                variant="outlined"
-                component="span"
-                fullWidth
-                color={errors.cover ? "error" : "primary"}
-              >
-                {formData.cover
-                  ? `Selected: ${formData.cover.name}`
-                  : "Upload Cover Image*"}
-              </Button>
-            </label>
-            {errors.cover && (
-              <Typography color="error">{errors.cover}</Typography>
-            )}
-          </Box>
-          {errors.submit && (
-            <Typography color="error" align="center" sx={{ mt: 2 }}>
-              {errors.submit}
-            </Typography>
-          )}
-          <StyledButton
-            type="submit"
-            fullWidth
-            variant="contained"
-            color="primary"
-            disabled={isLoading}
-          >
-            {isLoading ? "Creating..." : "Create Playlist"}
-          </StyledButton>
-        </StyledForm>
-      </StyledPaper>
-    </Container>
+    <FormCard title="New playlist">
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        encType="multipart/form-data"
+        noValidate
+        sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}
+      >
+        <TextField
+          variant="outlined"
+          required
+          fullWidth
+          id="title"
+          label="Playlist name"
+          name="title"
+          autoFocus
+          value={formData.title}
+          onChange={handleChange}
+          error={!!errors.title}
+          helperText={errors.title}
+        />
+        <TextField
+          variant="outlined"
+          fullWidth
+          id="description"
+          label="Description"
+          name="description"
+          multiline
+          rows={4}
+          value={formData.description}
+          onChange={handleChange}
+          error={!!errors.description}
+          helperText={errors.description}
+        />
+        <FileDropzone
+          id="cover-upload"
+          name="cover"
+          accept="image/*"
+          label="Cover image"
+          hint="An image, square works best"
+          required
+          file={formData.cover}
+          error={errors.cover}
+          onChange={handleChange}
+        />
+        {errors.submit && <Alert severity="error">{errors.submit}</Alert>}
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          disabled={isLoading}
+          sx={{ height: 48, fontSize: 15 }}
+        >
+          {isLoading ? "Creating..." : "Create playlist"}
+        </Button>
+      </Box>
+    </FormCard>
   );
 };
 
