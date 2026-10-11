@@ -1,16 +1,39 @@
+import { TAG_VOCABULARY } from '@platform/contracts';
 import { AnalysisInput, AnalysisOutput, Analyzer } from './analyzer';
 import { stanzaSegmentIndexes } from './build-lyrics.util';
 
+// FNV-1a: a stable number from the title
+const hashOf = (text: string): number => {
+  let hash = 0x811c9dc5;
+  for (const char of text) {
+    hash ^= char.codePointAt(0);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+};
+
+const pickTwo = <T>(values: readonly T[], hash: number): T[] => {
+  const first = hash % values.length;
+  const second =
+    (first + 1 + ((hash >>> 8) % (values.length - 1))) % values.length;
+  return [values[first], values[second]];
+};
+
 /**
  * Deterministic analysis without network: stanzas by pauses, a repeated
- * stanza becomes the chorus, fixed tags. For local development and tests.
+ * stanza becomes the chorus. Tags are derived from the title, so different
+ * songs get different (but stable) tags and profiles / recommendations can
+ * be demonstrated offline. For local development and tests.
  */
 export class FakeAnalyzer implements Analyzer {
   readonly model = 'fake';
 
   constructor(private readonly delayMs: number) {}
 
-  async analyze({ transcription }: AnalysisInput): Promise<AnalysisOutput> {
+  async analyze({
+    title,
+    transcription,
+  }: AnalysisInput): Promise<AnalysisOutput> {
     if (this.delayMs > 0) {
       await new Promise((done) => setTimeout(done, this.delayMs));
     }
@@ -36,9 +59,12 @@ export class FakeAnalyzer implements Analyzer {
         })),
       })),
       tags: {
-        mood: ['melancholic', 'hopeful'],
-        topics: ['love', 'friendship'],
-        energy: 'medium',
+        mood: pickTwo(TAG_VOCABULARY.mood, hashOf(title)),
+        topics: pickTwo(TAG_VOCABULARY.topics, hashOf(`${title}#topics`)),
+        energy:
+          TAG_VOCABULARY.energy[
+            hashOf(`${title}#energy`) % TAG_VOCABULARY.energy.length
+          ],
       },
     };
   }

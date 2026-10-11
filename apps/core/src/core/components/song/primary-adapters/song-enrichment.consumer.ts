@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EVENT_TYPES } from '@platform/contracts';
+import { EVENT_TYPES, isFromExpectedProducer } from '@platform/contracts';
 import { SubscribeToEvents, withEventContext } from '@platform/messaging';
 import ApplySongEnrichmentUseCase, {
   SongEnrichmentEvent,
@@ -7,9 +7,13 @@ import ApplySongEnrichmentUseCase, {
 
 export const SONG_ENRICHMENT_QUEUE = 'core.song-enrichment';
 
-const isSongEnrichmentEvent = (event: any): event is SongEnrichmentEvent =>
+// results are accepted only from the AI enrichment service
+export const isSongEnrichmentEvent = (
+  event: any,
+): event is SongEnrichmentEvent =>
   (event?.type === EVENT_TYPES.songEnriched ||
     event?.type === EVENT_TYPES.songEnrichmentFailed) &&
+  isFromExpectedProducer(event) &&
   typeof event.event_id === 'string' &&
   Number.isInteger(event.payload?.song_id);
 
@@ -22,7 +26,8 @@ export class SongEnrichmentConsumer {
     private readonly applySongEnrichmentUseCase: ApplySongEnrichmentUseCase,
   ) {}
 
-  // a malformed message or an unexpected error rejects it to the DLQ
+  // a malformed message, a wrong producer or an unexpected error rejects it
+  // to the DLQ
   @SubscribeToEvents(SONG_ENRICHMENT_QUEUE, [
     EVENT_TYPES.songEnriched,
     EVENT_TYPES.songEnrichmentFailed,

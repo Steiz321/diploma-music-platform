@@ -104,3 +104,23 @@ export const normalizeTags = (
 
   return { mood, topics, energy, language };
 };
+
+/**
+ * Positions of the tag vector: "group:value" for every value of every group,
+ * in vocabulary order. A track is a multi-hot vector over these keys; a user
+ * profile is a weighted vector over the same keys.
+ */
+export const TAG_VECTOR_KEYS: readonly string[] = (
+  Object.keys(TAG_VOCABULARY) as (keyof typeof TAG_VOCABULARY)[]
+).flatMap((group) => TAG_VOCABULARY[group].map((value) => `${group}:${value}`));
+
+/** Multi-hot vector of a track's tags over TAG_VECTOR_KEYS. */
+export const tagVector = (tags: SongTags): number[] => {
+  const present = new Set<string>([
+    ...tags.mood.map((value) => `mood:${value}`),
+    ...tags.topics.map((value) => `topics:${value}`),
+    `energy:${tags.energy}`,
+    `language:${tags.language}`,
+  ]);
+  return TAG_VECTOR_KEYS.map((key) => (present.has(key) ? 1 : 0));
+};
